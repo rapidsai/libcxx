@@ -33,13 +33,16 @@ Types:
 
 */
 
+#ifndef __simt__
 #include <__config>
 #include <version>
+#endif //__simt__
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #pragma GCC system_header
 #endif
 
+#ifndef __simt__
 // Don't include our own <stddef.h>; we don't want to declare ::nullptr_t.
 #ifdef _MSC_VER
     #include <../ucrt/stddef.h>
@@ -47,6 +50,7 @@ Types:
     #include_next <stddef.h>
 #endif
 #include <__nullptr>
+#endif //__simt__
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
@@ -119,7 +123,6 @@ _LIBCPP_END_NAMESPACE_STD_NOVERSION
 }
 #endif //_LIBCPP_END_NAMESPACE_STD_NOVERSION
 
-#include <type_traits>  // rest of byte
 #endif
 
 #endif  // _LIBCPP_CSTDDEF
