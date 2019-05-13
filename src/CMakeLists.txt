@@ -1,25 +1,84 @@
 set(LIBCXX_LIB_CMAKEFILES_DIR "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}"  PARENT_SCOPE)
 
 # Get sources
-# FIXME: Don't use glob here
-file(GLOB LIBCXX_SOURCES ../src/*.cpp)
+set(LIBCXX_SOURCES
+  algorithm.cpp
+  any.cpp
+  bind.cpp
+  charconv.cpp
+  chrono.cpp
+  condition_variable.cpp
+  debug.cpp
+  exception.cpp
+  functional.cpp
+  future.cpp
+  hash.cpp
+  include/apple_availability.h
+  include/atomic_support.h
+  include/config_elast.h
+  include/refstring.h
+  ios.cpp
+  iostream.cpp
+  locale.cpp
+  memory.cpp
+  mutex.cpp
+  new.cpp
+  optional.cpp
+  random.cpp
+  regex.cpp
+  shared_mutex.cpp
+  stdexcept.cpp
+  string.cpp
+  strstream.cpp
+  support/runtime/exception_fallback.ipp
+  support/runtime/exception_glibcxx.ipp
+  support/runtime/exception_libcxxabi.ipp
+  support/runtime/exception_libcxxrt.ipp
+  support/runtime/exception_msvc.ipp
+  support/runtime/exception_pointer_cxxabi.ipp
+  support/runtime/exception_pointer_glibcxx.ipp
+  support/runtime/exception_pointer_msvc.ipp
+  support/runtime/exception_pointer_unimplemented.ipp
+  support/runtime/new_handler_fallback.ipp
+  support/runtime/stdexcept_default.ipp
+  support/runtime/stdexcept_vcruntime.ipp
+  system_error.cpp
+  thread.cpp
+  typeinfo.cpp
+  utility.cpp
+  valarray.cpp
+  variant.cpp
+  vector.cpp
+  )
+
 if(WIN32)
-  file(GLOB LIBCXX_WIN32_SOURCES ../src/support/win32/*.cpp)
-  list(APPEND LIBCXX_SOURCES ${LIBCXX_WIN32_SOURCES})
+  list(APPEND LIBCXX_SOURCES
+    support/win32/locale_win32.cpp
+    support/win32/support.cpp
+    support/win32/thread_win32.cpp
+    )
 elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "SunOS")
-  file(GLOB LIBCXX_SOLARIS_SOURCES ../src/support/solaris/*.cpp)
-  list(APPEND LIBCXX_SOURCES ${LIBCXX_SOLARIS_SOURCES})
+  list(APPEND LIBCXX_SOURCES
+    support/solaris/mbsnrtowcs.inc
+    support/solaris/wcsnrtombs.inc
+    support/solaris/xlocale.cpp
+    )
 endif()
 
 if (LIBCXX_ENABLE_FILESYSTEM)
-  list(APPEND LIBCXX_SOURCES ../src/filesystem/operations.cpp
-                             ../src/filesystem/directory_iterator.cpp)
+  list(APPEND LIBCXX_SOURCES
+    filesystem/filesystem_common.h
+    filesystem/operations.cpp
+    filesystem/directory_iterator.cpp
+    )
   # Filesystem uses __int128_t, which requires a definition of __muloi4 when
   # compiled with UBSAN. This definition is not provided by libgcc_s, but is
   # provided by compiler-rt. So we need to disable it to avoid having multiple
   # definitions. See filesystem/int128_builtins.cpp.
   if (NOT LIBCXX_USE_COMPILER_RT)
-    list(APPEND LIBCXX_SOURCES ../src/filesystem/int128_builtins.cpp)
+    list(APPEND LIBCXX_SOURCES
+      filesystem/int128_builtins.cpp
+      )
   endif()
 endif()
 
@@ -76,51 +135,64 @@ if (APPLE AND LLVM_USE_SANITIZER)
   endif()
 endif()
 
-# Generate private library list.
-add_library_flags_if(LIBCXX_HAS_PTHREAD_LIB pthread)
-add_library_flags_if(LIBCXX_HAS_C_LIB c)
-add_library_flags_if(LIBCXX_HAS_M_LIB m)
-add_library_flags_if(LIBCXX_HAS_RT_LIB rt)
-if (LIBCXX_USE_COMPILER_RT)
-  find_compiler_rt_library(builtins LIBCXX_BUILTINS_LIBRARY)
-  add_library_flags_if(LIBCXX_BUILTINS_LIBRARY "${LIBCXX_BUILTINS_LIBRARY}")
-else()
-  add_library_flags_if(LIBCXX_HAS_GCC_S_LIB gcc_s)
-endif()
-add_library_flags_if(LIBCXX_HAVE_CXX_ATOMICS_WITH_LIB atomic)
-add_library_flags_if(MINGW "${MINGW_LIBRARIES}")
+function(cxx_link_system_libraries target)
+  target_add_link_flags_if_supported(${target} PRIVATE "-nodefaultlibs")
+  target_add_compile_flags_if_supported(${target} PRIVATE "/Zl")
+  target_add_link_flags_if_supported(${target} PRIVATE "/nodefaultlib")
 
-# Add the unwinder library.
-if (LIBCXXABI_USE_LLVM_UNWINDER)
-  if (NOT LIBCXXABI_ENABLE_STATIC_UNWINDER AND (TARGET unwind_shared OR HAVE_LIBUNWIND))
-    add_interface_library(unwind_shared)
-  elseif (LIBCXXABI_ENABLE_STATIC_UNWINDER AND (TARGET unwind_static OR HAVE_LIBUNWIND))
-    add_interface_library(unwind_static)
-  else()
-    add_interface_library(unwind)
+  if (LIBCXX_HAS_SYSTEM_LIB)
+    target_link_libraries(${target} PUBLIC System)
   endif()
-endif()
 
-# Setup flags.
-add_link_flags_if_supported(-nodefaultlibs)
-
-if (LIBCXX_TARGETING_MSVC)
-  if (LIBCXX_DEBUG_BUILD)
-    set(LIB_SUFFIX "d")
-  else()
-    set(LIB_SUFFIX "")
+  if (LIBCXX_HAS_PTHREAD_LIB)
+    target_link_libraries(${target} PUBLIC pthread)
   endif()
-  add_compile_flags(/Zl)
-  add_link_flags(/nodefaultlib)
 
-  add_library_flags(ucrt${LIB_SUFFIX}) # Universal C runtime
-  add_library_flags(vcruntime${LIB_SUFFIX}) # C++ runtime
-  add_library_flags(msvcrt${LIB_SUFFIX}) # C runtime startup files
-  add_library_flags(msvcprt${LIB_SUFFIX}) # C++ standard library. Required for exception_ptr internals.
-  # Required for standards-complaint wide character formatting functions
-  # (e.g. `printfw`/`scanfw`)
-  add_library_flags(iso_stdio_wide_specifiers)
-endif()
+  if (LIBCXX_HAS_C_LIB)
+    target_link_libraries(${target} PUBLIC c)
+  endif()
+
+  if (LIBCXX_HAS_M_LIB)
+    target_link_libraries(${target} PUBLIC m)
+  endif()
+
+  if (LIBCXX_HAS_RT_LIB)
+    target_link_libraries(${target} PUBLIC rt)
+  endif()
+
+  if (LIBCXX_USE_COMPILER_RT)
+    find_compiler_rt_library(builtins LIBCXX_BUILTINS_LIBRARY)
+    if (LIBCXX_BUILTINS_LIBRARY)
+      target_link_libraries(${target} PUBLIC "${LIBCXX_BUILTINS_LIBRARY}")
+    endif()
+  elseif (LIBCXX_HAS_GCC_S_LIB)
+    target_link_libraries(${target} PUBLIC gcc_s)
+  endif()
+
+  if (LIBCXX_HAVE_CXX_ATOMICS_WITH_LIB)
+    target_link_libraries(${target} PUBLIC atomic)
+  endif()
+
+  if (MINGW)
+    target_link_libraries(${target} PUBLIC "${MINGW_LIBRARIES}")
+  endif()
+
+  if (LIBCXX_TARGETING_MSVC)
+    if (LIBCXX_DEBUG_BUILD)
+      set(LIB_SUFFIX "d")
+    else()
+      set(LIB_SUFFIX "")
+    endif()
+
+    target_link_libraries(${target} PUBLIC ucrt${LIB_SUFFIX}) # Universal C runtime
+    target_link_libraries(${target} PUBLIC vcruntime${LIB_SUFFIX}) # C++ runtime
+    target_link_libraries(${target} PUBLIC msvcrt${LIB_SUFFIX}) # C runtime startup files
+    target_link_libraries(${target} PUBLIC msvcprt${LIB_SUFFIX}) # C++ standard library. Required for exception_ptr internals.
+    # Required for standards-complaint wide character formatting functions
+    # (e.g. `printfw`/`scanfw`)
+    target_link_libraries(${target} PUBLIC iso_stdio_wide_specifiers)
+  endif()
+endfunction()
 
 function(cxx_set_common_defines name)
   if(LIBCXX_CXX_ABI_HEADER_TARGET)
@@ -159,6 +231,7 @@ if (LIBCXX_ENABLE_SHARED)
   if(COMMAND llvm_setup_rpath)
     llvm_setup_rpath(cxx_shared)
   endif()
+  cxx_link_system_libraries(cxx_shared)
   target_link_libraries(cxx_shared PRIVATE ${LIBCXX_LIBRARIES})
   set_target_properties(cxx_shared
     PROPERTIES
@@ -171,6 +244,19 @@ if (LIBCXX_ENABLE_SHARED)
   )
   cxx_set_common_defines(cxx_shared)
 
+  # Link against LLVM libunwind
+  if (LIBCXXABI_USE_LLVM_UNWINDER)
+    if (NOT LIBCXXABI_STATICALLY_LINK_UNWINDER_IN_SHARED_LIBRARY AND (TARGET unwind_shared OR HAVE_LIBUNWIND))
+      target_link_libraries(cxx_shared PUBLIC unwind_shared)
+      list(APPEND LIBCXX_INTERFACE_LIBRARIES unwind_shared) # For the linker script
+    elseif (LIBCXXABI_STATICALLY_LINK_UNWINDER_IN_SHARED_LIBRARY AND (TARGET unwind_static OR HAVE_LIBUNWIND))
+      # libunwind is already included in libc++abi
+    else()
+      target_link_libraries(cxx_shared PRIVATE unwind)
+      list(APPEND LIBCXX_INTERFACE_LIBRARIES unwind) # For the linker script
+    endif()
+  endif()
+
   # Link against libc++abi
   if (LIBCXX_STATICALLY_LINK_ABI_IN_SHARED_LIBRARY)
     if (APPLE)
@@ -179,9 +265,8 @@ if (LIBCXX_ENABLE_SHARED)
       target_link_libraries(cxx_shared PRIVATE "-Wl,--whole-archive,-Bstatic" "${LIBCXX_CXX_STATIC_ABI_LIBRARY}" "-Wl,-Bdynamic,--no-whole-archive")
     endif()
   else()
-    target_link_libraries(cxx_shared PRIVATE "${LIBCXX_CXX_SHARED_ABI_LIBRARY}")
+    target_link_libraries(cxx_shared PUBLIC "${LIBCXX_CXX_SHARED_ABI_LIBRARY}")
     list(APPEND LIBCXX_INTERFACE_LIBRARIES "${LIBCXX_CXX_SHARED_ABI_LIBRARY}") # For the linker script
-    list(APPEND LIBCXX_LIBRARIES "${LIBCXX_CXX_SHARED_ABI_LIBRARY}") # For the benchmarks
   endif()
 
   # Maybe re-export symbols from libc++abi
@@ -193,18 +278,18 @@ if (LIBCXX_ENABLE_SHARED)
 
   if (LIBCXX_OSX_REEXPORT_LIBCXXABI_SYMBOLS)
     if ("${CMAKE_OSX_ARCHITECTURES}" MATCHES "^(armv6|armv7|armv7s)$")
-      set(RE_EXPORT_LIST "${CMAKE_CURRENT_SOURCE_DIR}/libc++sjlj-abi.v${LIBCXX_LIBCPPABI_VERSION}.exp")
+      set(RE_EXPORT_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../lib/libc++sjlj-abi.v${LIBCXX_LIBCPPABI_VERSION}.exp")
     else()
-      set(RE_EXPORT_LIST "${CMAKE_CURRENT_SOURCE_DIR}/libc++abi.v${LIBCXX_LIBCPPABI_VERSION}.exp")
+      set(RE_EXPORT_LIST "${CMAKE_CURRENT_SOURCE_DIR}/../lib/libc++abi.v${LIBCXX_LIBCPPABI_VERSION}.exp")
     endif()
     target_link_libraries(cxx_shared PRIVATE
-      "-Wl,-unexported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/libc++unexp.exp"
+      "-Wl,-unexported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/../lib/libc++unexp.exp"
       "-Wl,-reexported_symbols_list,${RE_EXPORT_LIST}"
-      "-Wl,-force_symbols_not_weak_list,${CMAKE_CURRENT_SOURCE_DIR}/notweak.exp"
-      "-Wl,-force_symbols_weak_list,${CMAKE_CURRENT_SOURCE_DIR}/weak.exp")
+      "-Wl,-force_symbols_not_weak_list,${CMAKE_CURRENT_SOURCE_DIR}/../lib/notweak.exp"
+      "-Wl,-force_symbols_weak_list,${CMAKE_CURRENT_SOURCE_DIR}/../lib/weak.exp")
 
     if (NOT LIBCXX_ENABLE_NEW_DELETE_DEFINITIONS)
-      target_link_libraries(cxx_shared PRIVATE "-Wl,-reexported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/libc++abi-new-delete.exp")
+      target_link_libraries(cxx_shared PRIVATE "-Wl,-reexported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/../lib/libc++abi-new-delete.exp")
     endif()
   endif()
 
@@ -228,7 +313,8 @@ if (LIBCXX_ENABLE_SHARED)
       COMMAND
         ${PYTHON_EXECUTABLE} ${LIBCXX_SOURCE_DIR}/utils/gen_link_script.py
       ARGS
-        "$<TARGET_LINKER_FILE:cxx_shared>"
+        --input "$<TARGET_SONAME_FILE:cxx_shared>"
+        --output "$<TARGET_LINKER_FILE:cxx_shared>"
         ${LIBCXX_INTERFACE_LIBRARY_NAMES}
       WORKING_DIRECTORY ${LIBCXX_BUILD_DIR}
     )
@@ -250,6 +336,7 @@ endif()
 # Build the static library.
 if (LIBCXX_ENABLE_STATIC)
   add_library(cxx_static STATIC ${exclude_from_all} ${LIBCXX_SOURCES} ${LIBCXX_HEADERS})
+  cxx_link_system_libraries(cxx_static)
   target_link_libraries(cxx_static PRIVATE ${LIBCXX_LIBRARIES})
   set(CMAKE_STATIC_LIBRARY_PREFIX "lib")
   set_target_properties(cxx_static
@@ -262,7 +349,12 @@ if (LIBCXX_ENABLE_STATIC)
 
   if (LIBCXX_HERMETIC_STATIC_LIBRARY)
     append_flags_if_supported(CXX_STATIC_LIBRARY_FLAGS -fvisibility=hidden)
-    append_flags_if_supported(CXX_STATIC_LIBRARY_FLAGS -fvisibility-global-new-delete-hidden)
+    # If the hermetic library doesn't define the operator new/delete functions
+    # then its code shouldn't declare them with hidden visibility.  They might
+    # actually be provided by a shared library at link time.
+    if (LIBCXX_ENABLE_NEW_DELETE_DEFINITIONS)
+      append_flags_if_supported(CXX_STATIC_LIBRARY_FLAGS -fvisibility-global-new-delete-hidden)
+    endif()
     target_compile_options(cxx_static PRIVATE ${CXX_STATIC_LIBRARY_FLAGS})
     target_compile_definitions(cxx_static PRIVATE _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS)
   endif()
@@ -301,7 +393,9 @@ endif()
 add_custom_target(cxx DEPENDS cxx-headers ${LIBCXX_BUILD_TARGETS})
 
 if (LIBCXX_ENABLE_EXPERIMENTAL_LIBRARY)
-  file(GLOB LIBCXX_EXPERIMENTAL_SOURCES ../src/experimental/*.cpp)
+  set(LIBCXX_EXPERIMENTAL_SOURCES
+    experimental/memory_resource.cpp
+    )
   add_library(cxx_experimental STATIC ${LIBCXX_EXPERIMENTAL_SOURCES})
   if (LIBCXX_ENABLE_SHARED)
     target_link_libraries(cxx_experimental cxx_shared)
@@ -385,8 +479,3 @@ if (NOT CMAKE_CONFIGURATION_TYPES AND (LIBCXX_INSTALL_LIBRARY OR
                       -P "${LIBCXX_BINARY_DIR}/cmake_install.cmake")
     add_custom_target(install-libcxx DEPENDS install-cxx)
 endif()
-
-# TODO: This is needed by cxx-benchmarks but this variable isn't
-# available outside of the scope of this file so we need to export
-# it. This is not necessarily the cleanest solution.
-set(LIBCXX_LIBRARIES ${LIBCXX_LIBRARIES} PARENT_SCOPE)
