@@ -1467,10 +1467,10 @@ template <class _Tp, int _Sco>
 _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow_fallback(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, int order) {
     std::ptrdiff_t history = 10;
     do {
-#ifdef __CUDA_ARCH__
-        asm("nanosleep.u32 %0;" :: "r"(unsigned(history >> 2)) : "memory");
-#else
         chrono::nanoseconds duration(history >> 2);
+#ifdef __CUDA_ARCH__
+        asm("nanosleep.u32 %0;" :: "r"(unsigned(duration.count())) : "memory");
+#else
         __libcpp_thread_sleep_for(duration);
 #endif
         history += history >> 2;

@@ -1066,7 +1066,7 @@ private:
 public:
 
     _LIBCPP_INLINE_VISIBILITY _LIBCPP_CONSTEXPR
-#ifndef _LIBCPP_CXX03_LANG
+#if !defined(_LIBCPP_CXX03_LANG) && !defined(__NVCC__)
         duration() = default;
 #else
         duration() {}
