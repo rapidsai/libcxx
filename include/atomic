@@ -1414,7 +1414,7 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow_fallback(__cxx_atomic_
     std::ptrdiff_t history = 10;
     do {
 #ifdef __CUDA_ARCH__
-        __nanosleep(history >> 2);
+        asm("nanosleep.u32 %0;" :: "r"(unsigned(history >> 2)) : "memory");
 #else
         chrono::nanoseconds duration(history >> 2);
         __libcpp_thread_sleep_for(duration);
