@@ -10,10 +10,19 @@
 #ifndef _LIBCPP_THREADING_SUPPORT
 #define _LIBCPP_THREADING_SUPPORT
 
+#ifndef __simt__
 #include <__config>
 #include <chrono>
 #include <iosfwd>
 #include <errno.h>
+#include <climits>
+#endif
+
+#if defined(__linux__)
+# include <unistd.h>
+# include <linux/futex.h>
+# include <sys/syscall.h>
+#endif
 
 #ifndef _LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER
 #pragma GCC system_header
@@ -26,6 +35,18 @@
 #if defined(_LIBCPP_HAS_THREAD_API_PTHREAD)
 # include <pthread.h>
 # include <sched.h>
+#endif
+
+#if defined(__CUDA_ARCH__)
+# define _LIBCPP_YIELD_PROCESSOR()
+#elif defined(__aarch64__)
+# define _LIBCPP_YIELD_PROCESSOR() asm volatile ("yield" ::: "memory")
+#elif defined(__x86_64__)
+# define _LIBCPP_YIELD_PROCESSOR() asm volatile ("pause" ::: "memory")
+#elif defined (__powerpc__)
+# define _LIBCPP_YIELD_PROCESSOR() asm volatile ("or 27,27,27" ::: "memory")
+#else
+# define _LIBCPP_YIELD_PROCESSOR()
 #endif
 
 #if defined(_LIBCPP_HAS_THREAD_LIBRARY_EXTERNAL) || \
@@ -46,8 +67,9 @@ typedef ::timespec __libcpp_timespec_t;
 #endif // !defined(_LIBCPP_HAS_NO_THREADS)
 
 _LIBCPP_PUSH_MACROS
+#ifndef __simt__
 #include <__undef_macros>
-
+#endif
 _LIBCPP_BEGIN_NAMESPACE_STD
 
 #if !defined(_LIBCPP_HAS_NO_THREADS)
@@ -400,6 +422,52 @@ int __libcpp_tls_set(__libcpp_tls_key __key, void *__p)
 }
 
 #endif // !_LIBCPP_HAS_THREAD_LIBRARY_EXTERNAL || _LIBCPP_BUILDING_THREAD_LIBRARY_EXTERNAL
+
+#if defined(__linux__) && !defined(_LIBCPP_HAS_NO_PLATFORM_WAIT)
+
+#define _LIBCPP_HAS_PLATFORM_WAIT
+
+using __libcpp_platform_wait_t = int;
+
+template<typename _Tp>
+struct __libcpp_platform_wait_uses_type {
+  enum { value = is_same<typename remove_cv<_Tp>::type, __libcpp_platform_wait_t>::value };
+};
+
+template <class _Tp, typename std::enable_if<__libcpp_platform_wait_uses_type<_Tp>::value, int>::type = 1>
+void __libcpp_platform_wait(_Tp const* ptr, _Tp val, void const* timeout) {
+    syscall(SYS_futex, ptr, FUTEX_WAIT_PRIVATE, val, timeout, 0, 0);
+}
+
+template <class _Tp, typename std::enable_if<__libcpp_platform_wait_uses_type<_Tp>::value, int>::type = 1>
+void __libcpp_platform_wake(_Tp const* ptr, bool all) {
+    syscall(SYS_futex, ptr, FUTEX_WAKE_PRIVATE, all ? INT_MAX : 1, 0, 0, 0);
+}
+
+#endif // __linux__
+
+#ifndef _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
+
+struct alignas(64) __libcpp_contention_t {
+#if defined(_LIBCPP_HAS_PLATFORM_WAIT)
+    std::ptrdiff_t           waiters = 0;
+    __libcpp_platform_wait_t version = 0;
+#else
+    std::ptrdiff_t           credit = 0;
+    __libcpp_mutex_t         mutex = _LIBCPP_MUTEX_INITIALIZER;
+    __libcpp_condvar_t       condvar = _LIBCPP_CONDVAR_INITIALIZER;
+#endif
+};
+
+extern __libcpp_contention_t * __libcpp_contention_state(volatile void const * p);
+
+#endif // _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
+
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
+
+extern thread_local std::size_t __libcpp_thread_favorite_hash;
+
+#endif
 
 class _LIBCPP_TYPE_VIS thread;
 class _LIBCPP_TYPE_VIS __thread_id;
