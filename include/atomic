@@ -1819,6 +1819,7 @@ struct atomic
     : public __atomic_base<_Tp>
 {
     typedef __atomic_base<_Tp> __base;
+    using value_type = _Tp;
     _LIBCPP_INLINE_VISIBILITY
     atomic() _NOEXCEPT _LIBCPP_DEFAULT
     _LIBCPP_INLINE_VISIBILITY
@@ -1839,6 +1840,7 @@ struct atomic<_Tp*>
     : public __atomic_base<_Tp*>
 {
     typedef __atomic_base<_Tp*> __base;
+    using value_type = _Tp*;
     _LIBCPP_INLINE_VISIBILITY
     atomic() _NOEXCEPT _LIBCPP_DEFAULT
     _LIBCPP_INLINE_VISIBILITY
