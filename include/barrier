@@ -250,8 +250,8 @@ class __barrier_base<EmptyCompletionF, _Sco> {
     static inline _LIBCPP_INLINE_VISIBILITY
     constexpr uint64_t __init(ptrdiff_t count) _NOEXCEPT 
     {
-        uint64_t const comp = (1u << 31) - count;
-        return (comp << 32) | comp;
+        return (((1u << 31) - count) << 32) 
+              | ((1u << 31) - count);
     }
 
 public:
