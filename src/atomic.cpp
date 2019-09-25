@@ -22,13 +22,6 @@ __libcpp_contention_t * __libcpp_contention_state(void const volatile * p) _NOEX
 
 #endif
 
-#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-
-thread_local std::size_t __libcpp_thread_favorite_hash =
-    std::hash<__libcpp_thread_id>()(__libcpp_thread_get_current_id());
-
-#endif
-
 _LIBCPP_END_NAMESPACE_STD
 
 #endif //_LIBCPP_HAS_NO_THREADS
