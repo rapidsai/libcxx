@@ -1572,6 +1572,8 @@ operator-(const time_point<_Clock, _Duration1>& __lhs, const time_point<_Clock, 
 /////////////////////// clocks ///////////////////////////
 //////////////////////////////////////////////////////////
 
+#ifndef _LIBCPP_HAS_CLOCK_API_EXTERNAL
+
 class _LIBCPP_TYPE_VIS system_clock
 {
 public:
@@ -1604,7 +1606,12 @@ typedef steady_clock high_resolution_clock;
 typedef system_clock high_resolution_clock;
 #endif
 
+#endif // _LIBCPP_HAS_CLOCK_API_EXTERNAL
+
 #if _LIBCPP_STD_VER > 17
+
+#ifndef _LIBCPP_HAS_CLOCK_API_EXTERNAL
+
 // [time.clock.file], type file_clock
 using file_clock = _VSTD_FS::_FilesystemClock;
 
@@ -1623,6 +1630,7 @@ using local_time  = time_point<local_t, Duration>;
 using local_seconds = local_time<seconds>;
 using local_days    = local_time<days>;
 
+#endif // _LIBCPP_HAS_CLOCK_API_EXTERNAL
 
 struct last_spec { explicit last_spec() = default; };
 
