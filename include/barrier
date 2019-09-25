@@ -1,0 +1,316 @@
+// -*- C++ -*-
+//===--------------------------- atomic -----------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP_BARRIER
+#define _LIBCPP_BARRIER
+
+/*
+    barrier synopsis
+
+namespace std 
+{
+
+ template<class CompletionFunction = see below>
+ class barrier;
+
+}
+
+*/
+
+#ifndef __simt__
+#include <__config>
+#include <cstddef>
+#include <thread>
+#include <vector>
+#include <atomic>
+#include <version>
+#endif
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#pragma GCC system_header
+#endif
+
+#ifdef _LIBCPP_HAS_NO_THREADS
+# error <barrier> is not supported on this single threaded system
+#endif
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+struct EmptyCompletionF {
+    inline void operator()() noexcept { }
+};
+
+#ifdef _LIBCPP_BARRIER_BUTTERFLY
+
+template<class CompletionF = EmptyCompletionF, int _Sco = 0>
+class __barrier_base {
+
+    using __phase_t = uint8_t;    
+
+    struct alignas(64) __state_t {
+        struct { 
+            __atomic_base<__phase_t, _Sco> value = ATOMIC_VAR_INIT(0);
+        } phases[64]; //< this many rounds could barrier the universe
+    };
+
+    alignas(64) ptrdiff_t           expected;
+    ptrdiff_t                       expected_steps;
+    __atomic_base<ptrdiff_t, _Sco>  expected_adjustment;
+    __atomic_base<__phase_t, _Sco>  phase;
+    alignas(64) __state_t*          state;
+    CompletionF                     completion;
+
+    static constexpr __phase_t __next_phase(__phase_t old) { 
+        return (old + 1) & 3; 
+    }
+    inline bool __try_get_id(size_t id, __phase_t old_phase) {
+        return state[id].phases[63].value.compare_exchange_strong(old_phase, 
+                                                                  __next_phase(old_phase), 
+                                                                  memory_order_relaxed);
+    }
+    inline size_t __get_id(__phase_t const old_phase, ptrdiff_t count) {
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
+        if(__libcpp_thread_favorite_hash == ~0)
+            __libcpp_thread_favorite_hash = static_cast<size_t>(__libcpp_thread_get_current_id());
+#endif
+        for(auto i = 0; i < count; ++i) {
+            
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
+            auto id = __libcpp_thread_favorite_hash + i;
+#else
+            auto id = static_cast<size_t>(__libcpp_thread_get_current_id()) + i;
+#endif
+            if(id > count)
+                id %= count;
+            if(__builtin_expect(__try_get_id(id, old_phase), 1)) {
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
+                __libcpp_thread_favorite_hash = id;
+#endif
+                return id;
+            }
+        }
+        return ~0ull;
+    }
+    static constexpr uint32_t __log2_floor(ptrdiff_t count) { 
+        return count <= 1 ? 0 : 1 + __log2_floor(count >> 1); 
+    }
+    static constexpr uint32_t __log2_ceil(ptrdiff_t count) { 
+        auto const t = __log2_floor(count);
+        return count == (1 << t) ? t : t + 1;
+    }
+
+public:
+    struct arrival_token { 
+        __atomic_base<__phase_t, _Sco>& phase;
+        __phase_t old_phase;
+        arrival_token(__atomic_base<__phase_t, _Sco>& phase, __phase_t old_phase) :
+            phase(phase), old_phase(old_phase) { }
+    };
+
+    __barrier_base(ptrdiff_t expected, CompletionF completion = CompletionF()) 
+            : expected(expected), expected_steps(__log2_ceil(expected)), 
+              expected_adjustment(0), phase(0),
+              state(expected > 0 ? new __state_t[expected] : nullptr), completion(completion) { 
+        assert(expected >= 0);
+    }
+
+    ~__barrier_base() { if(nullptr != state) delete [] state; };
+
+    __barrier_base(__barrier_base const&) = delete;
+    __barrier_base& operator=(__barrier_base const&) = delete;
+
+    [[nodiscard]] inline arrival_token arrive(ptrdiff_t update = 1) {
+
+        size_t id = 0; // assume, for now
+        auto const old_phase = phase.load(memory_order_relaxed);
+        auto const count = expected;
+        assert(count > 0);
+        auto const steps = expected_steps;
+        if(0 != steps) {
+            id = __get_id(old_phase, count);
+            assert(id != ~0ull);
+            for(uint32_t k = 0;k < steps; ++k) {
+                auto const index = steps - k - 1;
+                state[(id + (1 << k)) % count].phases[index].value.store(__next_phase(old_phase), memory_order_release);
+                while(state[id].phases[index].value.load(memory_order_acquire) == old_phase)
+                    ;
+            }
+        }
+        if(0 == id) {
+            completion();
+            expected += expected_adjustment.load(memory_order_relaxed);
+            expected_steps = __log2_ceil(expected);
+            expected_adjustment.store(0, memory_order_relaxed);
+            phase.store(__next_phase(old_phase), memory_order_release);
+        }
+        return arrival_token(phase, old_phase);
+    }
+    inline void wait(arrival_token&& token) const {
+        auto const& current_phase = token.phase;
+        auto const old_phase = token.old_phase;
+        if(__builtin_expect(old_phase != current_phase.load(memory_order_acquire),1))
+            return;
+        using __clock = conditional<chrono::high_resolution_clock::is_steady, 
+                                            chrono::high_resolution_clock,
+                                            chrono::steady_clock>::type;
+        //auto const start = __clock::now();
+        while (old_phase == current_phase.load(memory_order_acquire)) {
+            //auto const elapsed = chrono::duration_cast<chrono::nanoseconds>(__clock::now() - start);
+            auto step //= elapsed / 4 + chrono::nanoseconds(100);
+                = chrono::nanoseconds(100);
+            if(step > chrono::nanoseconds(1500))
+                __libcpp_thread_sleep_for(chrono::nanoseconds(1500));
+            else if(step > chrono::nanoseconds(1000))
+                __libcpp_thread_sleep_for(step);
+            else if(step > chrono::nanoseconds(500))
+                __libcpp_thread_yield();
+        }
+    }
+	inline void arrive_and_wait() {
+        wait(arrive());
+	}
+    inline void arrive_and_drop() {
+        expected_adjustment.fetch_sub(1, memory_order_relaxed);
+        (void)arrive();
+    }
+};
+
+#else
+
+template<class CompletionF, int _Sco = 0>
+class __barrier_base {
+
+    alignas(64) __atomic_base<ptrdiff_t, _Sco> expected, arrived;
+    alignas(64) CompletionF                    completion;
+    alignas(64) __atomic_base<bool, _Sco>      phase;
+public:
+    using arrival_token = bool;
+
+    _LIBCPP_INLINE_VISIBILITY
+    __barrier_base(ptrdiff_t expected, CompletionF completion = CompletionF()) 
+        : phase(false), expected(expected), arrived(expected), completion(completion) 
+    {
+    }
+
+    ~__barrier_base() = default;
+
+    __barrier_base(__barrier_base const&) = delete;
+    __barrier_base& operator=(__barrier_base const&) = delete;
+
+    [[nodiscard]] _LIBCPP_INLINE_VISIBILITY
+    arrival_token arrive(ptrdiff_t update = 1) 
+    {
+        auto const old_phase = phase.load(memory_order_relaxed);
+        auto const result = arrived.fetch_sub(update, memory_order_acq_rel) - update;
+        assert(result >= 0);
+        auto const new_expected = expected.load(memory_order_relaxed);
+        if(0 == result) {
+            completion();
+            arrived.store(new_expected, memory_order_relaxed);
+            phase.store(!old_phase, memory_order_release);
+            atomic_notify_all(&phase);
+        }
+        return old_phase;
+    }
+    _LIBCPP_INLINE_VISIBILITY
+    void wait(arrival_token&& old_phase) const 
+    {
+        phase.wait(old_phase, memory_order_acquire);
+    }
+	_LIBCPP_INLINE_VISIBILITY 
+    void arrive_and_wait() 
+    {
+        wait(arrive());
+	}
+    _LIBCPP_INLINE_VISIBILITY
+    void arrive_and_drop() 
+    {
+        expected.fetch_sub(1, memory_order_relaxed);
+        (void)arrive();
+    }
+};
+
+template<int _Sco>
+class __barrier_base<EmptyCompletionF, _Sco> {
+
+    static constexpr uint64_t expected_unit = 1ull;
+    static constexpr uint64_t arrived_unit = 1ull << 32;
+    static constexpr uint64_t expected_mask = arrived_unit - 1;
+    static constexpr uint64_t phase_bit = 1ull << 63;
+    static constexpr uint64_t arrived_mask = (phase_bit - 1) & ~expected_mask;
+
+    alignas(64) __atomic_base<uint64_t, _Sco> phase_arrived_expected;
+
+    static inline _LIBCPP_INLINE_VISIBILITY
+    constexpr uint64_t __init(ptrdiff_t count) _NOEXCEPT 
+    {
+        uint64_t const comp = (1u << 31) - count;
+        return (comp << 32) | comp;
+    }
+
+public:
+    using arrival_token = uint64_t;
+
+    _LIBCPP_INLINE_VISIBILITY
+    __barrier_base(ptrdiff_t count, EmptyCompletionF = EmptyCompletionF()) 
+        : phase_arrived_expected(__init(count)) { 
+    }
+
+    ~__barrier_base() = default;
+
+    __barrier_base(__barrier_base const&) = delete;
+    __barrier_base& operator=(__barrier_base const&) = delete;
+
+    [[nodiscard]] inline _LIBCPP_INLINE_VISIBILITY
+    arrival_token arrive(ptrdiff_t update = 1) 
+    {
+        auto const old = phase_arrived_expected.fetch_add(arrived_unit, memory_order_acq_rel);
+        if((old ^ (old + arrived_unit)) & phase_bit) {
+            phase_arrived_expected.fetch_add((old & expected_mask) << 32, memory_order_relaxed);
+            phase_arrived_expected.notify_all();
+        }
+        return old & phase_bit;
+    }
+    inline _LIBCPP_INLINE_VISIBILITY 
+    void wait(arrival_token&& phase) const 
+    {
+        while(1) {
+            uint64_t const current = phase_arrived_expected.load(memory_order_acquire);
+            if((current & phase_bit) != phase)
+                return;
+            phase_arrived_expected.wait(current, memory_order_relaxed);
+        }
+    }
+	inline _LIBCPP_INLINE_VISIBILITY
+    void arrive_and_wait() 
+    {
+        wait(arrive());
+	}
+    inline _LIBCPP_INLINE_VISIBILITY
+    void arrive_and_drop() 
+    {
+        phase_arrived_expected.fetch_add(expected_unit, memory_order_relaxed);
+        (void)arrive();
+    }
+};
+
+#endif //_LIBCPP_BARRIER_BUTTERFLY
+
+template<class CompletionF = EmptyCompletionF>
+class barrier : public __barrier_base<CompletionF> {
+public:
+    _LIBCPP_INLINE_VISIBILITY
+    barrier(ptrdiff_t count, CompletionF completion = CompletionF()) 
+        : __barrier_base<CompletionF>(count, completion) { 
+    }
+};
+
+_LIBCPP_END_NAMESPACE_STD
+
+#endif //_LIBCPP_BARRIER
