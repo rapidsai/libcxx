@@ -16,7 +16,7 @@
 namespace std 
 {
 
- template<class CompletionFunction = see below>
+ template<class CompletionFunction = implementation-defined>
  class barrier;
 
 }
@@ -152,25 +152,28 @@ public:
         return arrival_token(phase, old_phase);
     }
     inline void wait(arrival_token&& token) const {
+
         auto const& current_phase = token.phase;
         auto const old_phase = token.old_phase;
-        if(__builtin_expect(old_phase != current_phase.load(memory_order_acquire),1))
+        if(__builtin_expect(old_phase != current_phase.load(std::memory_order_acquire),1))
             return;
-        using __clock = conditional<chrono::high_resolution_clock::is_steady, 
-                                            chrono::high_resolution_clock,
-                                            chrono::steady_clock>::type;
-        //auto const start = __clock::now();
+        auto const start = chrono::high_resolution_clock::now();
         while (old_phase == current_phase.load(memory_order_acquire)) {
-            //auto const elapsed = chrono::duration_cast<chrono::nanoseconds>(__clock::now() - start);
-            auto step //= elapsed / 4 + chrono::nanoseconds(100);
-                = chrono::nanoseconds(100);
-            if(step > chrono::nanoseconds(1500))
-                __libcpp_thread_sleep_for(chrono::nanoseconds(1500));
-            else if(step > chrono::nanoseconds(1000))
-                __libcpp_thread_sleep_for(step);
-            else if(step > chrono::nanoseconds(500))
+            auto const elapsed = chrono::duration_cast<chrono::nanoseconds>(
+                                    chrono::high_resolution_clock::now() - start);
+            auto const step = elapsed.count() >> 2;
+            if(step > 2500)
+#ifdef __CUDA_ARCH__
+                asm("nanosleep.u32 %0;" :: "r"((unsigned)step) : "memory");
+#else
+                __libcpp_thread_sleep_for(chrono::nanoseconds(step));
+            else if(step > 1000)
                 __libcpp_thread_yield();
+            else
+                _LIBCPP_YIELD_PROCESSOR();
+#endif
         }
+
     }
 	inline void arrive_and_wait() {
         wait(arrive());
