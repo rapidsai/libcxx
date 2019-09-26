@@ -55,6 +55,7 @@ void __barrier_poll_wait(F && f) {
     while (!f()) {
         auto const elapsed = chrono::duration_cast<chrono::nanoseconds>(
                                 chrono::high_resolution_clock::now() - start);
+        assert(elapsed >= chrono::nanoseconds::zero());
         auto const step = elapsed.count() >> 2;
         if(step > 2500)
 #ifdef __CUDA_ARCH__
@@ -175,7 +176,9 @@ public:
         return arrival_token(phase, old_phase);
     }
     inline void wait(arrival_token&& token) const {
-
+        __barrier_poll_wait([&]() -> bool {
+            return token.phase.load(memory_order_acquire) != token.old_phase;
+        });
     }
 	inline void arrive_and_wait() {
         wait(arrive());
