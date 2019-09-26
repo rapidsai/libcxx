@@ -425,7 +425,6 @@ bool __libcpp_semaphore_destroy(__libcpp_semaphore_t* __sem)
 
 bool __libcpp_semaphore_post(__libcpp_semaphore_t* __sem) 
 {
-    assert(__inc == 1);
     return sem_post(__sem) == 0;
 }
 
