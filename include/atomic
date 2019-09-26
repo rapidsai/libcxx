@@ -1465,18 +1465,9 @@ __cxx_atomic_impl<_Tp, _Sco>* __cxx_atomic_rebind(_Tp* __inst) {
 
 template <class _Tp, int _Sco>
 _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow_fallback(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, int order) {
-    std::ptrdiff_t history = 10;
-    do {
-        chrono::nanoseconds duration(history >> 2);
-#ifdef __CUDA_ARCH__
-        asm("nanosleep.u32 %0;" :: "r"(unsigned(duration.count())) : "memory");
-#else
-        __libcpp_thread_sleep_for(duration);
-#endif
-        history += history >> 2;
-        if (history > (1 << 10))
-            history = 1 << 10;
-    } while (__cxx_atomic_load(__a, order) == val);
+    __libcpp_thread_poll_with_backoff([=] _LIBCPP_INLINE_VISIBILITY () -> bool {
+        return __cxx_atomic_load(__a, order) != val;
+    });
 }
 
 #endif

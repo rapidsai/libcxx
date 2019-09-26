@@ -65,27 +65,6 @@ struct EmptyCompletionF
     void operator()() noexcept { }
 };
 
-template<class F>
-inline _LIBCPP_INLINE_VISIBILITY
-void __barrier_poll_wait(F && f) 
-{
-    if(__builtin_expect(f(),1))
-        return;
-    auto const start = chrono::steady_clock::now();
-    while (!f()) {
-        auto const elapsed = chrono::duration_cast<chrono::nanoseconds>(
-                                chrono::steady_clock::now() - start);
-        assert(elapsed >= chrono::nanoseconds::zero());
-        auto const step = elapsed.count() >> 2;
-        if(step > 2500)
-            __libcpp_thread_sleep_for(chrono::nanoseconds(step));
-        else if(step > 1000)
-            __libcpp_thread_yield();
-        else
-            __libcpp_thread_yield_processor();
-    }
-}
-
 #ifdef _LIBCPP_BARRIER_BUTTERFLY
 
 template<class CompletionF = EmptyCompletionF, int _Sco = 0>
@@ -211,7 +190,7 @@ public:
     inline _LIBCPP_INLINE_VISIBILITY
     void wait(arrival_token&& token) const 
     {
-        __barrier_poll_wait([&]() -> bool {
+        __libcpp_thread_poll_with_backoff([&]() -> bool {
             return token.phase.load(memory_order_acquire) != token.old_phase;
         });
     }
@@ -327,7 +306,7 @@ public:
     inline _LIBCPP_INLINE_VISIBILITY 
     void wait(arrival_token&& phase) const 
     {
-        __barrier_poll_wait([&] _LIBCPP_INLINE_VISIBILITY () -> bool {
+        __libcpp_thread_poll_with_backoff([&] _LIBCPP_INLINE_VISIBILITY () -> bool {
             uint64_t const current = phase_arrived_expected.load(memory_order_acquire);
             return ((current & phase_bit) != phase);
         });
