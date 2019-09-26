@@ -46,6 +46,29 @@ struct EmptyCompletionF {
     inline void operator()() noexcept { }
 };
 
+template<class F>
+inline _LIBCPP_INLINE_VISIBILITY
+void __barrier_poll_wait(F && f) {
+    if(__builtin_expect(f(),1))
+        return;
+    auto const start = chrono::high_resolution_clock::now();
+    while (!f()) {
+        auto const elapsed = chrono::duration_cast<chrono::nanoseconds>(
+                                chrono::high_resolution_clock::now() - start);
+        auto const step = elapsed.count() >> 2;
+        if(step > 2500)
+#ifdef __CUDA_ARCH__
+            asm("nanosleep.u32 %0;" :: "r"((unsigned)step) : "memory");
+#else
+            __libcpp_thread_sleep_for(chrono::nanoseconds(step));
+        else if(step > 1000)
+            __libcpp_thread_yield();
+        else
+            _LIBCPP_YIELD_PROCESSOR();
+#endif
+    }
+}
+
 #ifdef _LIBCPP_BARRIER_BUTTERFLY
 
 template<class CompletionF = EmptyCompletionF, int _Sco = 0>
@@ -152,27 +175,6 @@ public:
         return arrival_token(phase, old_phase);
     }
     inline void wait(arrival_token&& token) const {
-
-        auto const& current_phase = token.phase;
-        auto const old_phase = token.old_phase;
-        if(__builtin_expect(old_phase != current_phase.load(std::memory_order_acquire),1))
-            return;
-        auto const start = chrono::high_resolution_clock::now();
-        while (old_phase == current_phase.load(memory_order_acquire)) {
-            auto const elapsed = chrono::duration_cast<chrono::nanoseconds>(
-                                    chrono::high_resolution_clock::now() - start);
-            auto const step = elapsed.count() >> 2;
-            if(step > 2500)
-#ifdef __CUDA_ARCH__
-                asm("nanosleep.u32 %0;" :: "r"((unsigned)step) : "memory");
-#else
-                __libcpp_thread_sleep_for(chrono::nanoseconds(step));
-            else if(step > 1000)
-                __libcpp_thread_yield();
-            else
-                _LIBCPP_YIELD_PROCESSOR();
-#endif
-        }
 
     }
 	inline void arrive_and_wait() {
@@ -283,12 +285,18 @@ public:
     inline _LIBCPP_INLINE_VISIBILITY 
     void wait(arrival_token&& phase) const 
     {
+        __barrier_poll_wait([&] _LIBCPP_INLINE_VISIBILITY () -> bool {
+            uint64_t const current = phase_arrived_expected.load(memory_order_acquire);
+            return ((current & phase_bit) != phase);
+        });
+        /*
         while(1) {
             uint64_t const current = phase_arrived_expected.load(memory_order_acquire);
             if((current & phase_bit) != phase)
                 return;
             phase_arrived_expected.wait(current, memory_order_relaxed);
         }
+        */
     }
 	inline _LIBCPP_INLINE_VISIBILITY
     void arrive_and_wait() 
