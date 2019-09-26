@@ -244,8 +244,8 @@ class __sem_semaphore_base {
             auto const back_amount = __backbuffer.fetch_sub(2, memory_order_acquire);
             bool const post_one = back_amount > 0;
             bool const post_two = back_amount > 1;
-            auto const success = (!post_one || __libcpp_semaphore_post(&__semaphore, 1)) && 
-                                 (!post_two || __libcpp_semaphore_post(&__semaphore, 1));
+            auto const success = (!post_one || __libcpp_semaphore_post(&__semaphore)) && 
+                                 (!post_two || __libcpp_semaphore_post(&__semaphore));
             assert(success);
             if(!post_one || !post_two)
                 __backbuffer.fetch_add(!post_one ? 2 : 1, memory_order_relaxed);
@@ -304,12 +304,12 @@ class __sem_semaphore_base {
         bool const post_two = post_amount > 1;
         if(post_amount > 2)
             __backbuffer.fetch_add(post_amount - 2, memory_order_acq_rel);
-        auto const success = (!post_one || __libcpp_semaphore_post(&__semaphore, 1)) && 
-                             (!post_two || __libcpp_semaphore_post(&__semaphore, 1));
+        auto const success = (!post_one || __libcpp_semaphore_post(&__semaphore)) && 
+                             (!post_two || __libcpp_semaphore_post(&__semaphore));
         assert(success);
     #else
         for(; post_amount; --post_amount) {
-            auto const success = __libcpp_semaphore_post(&__semaphore, 1);
+            auto const success = __libcpp_semaphore_post(&__semaphore);
             assert(success);
         }
     #endif
