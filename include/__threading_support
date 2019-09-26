@@ -35,6 +35,7 @@
 #if defined(_LIBCPP_HAS_THREAD_API_PTHREAD)
 # include <pthread.h>
 # include <sched.h>
+# include <semaphore.h>
 #endif
 
 #if defined(_LIBCPP_HAS_THREAD_LIBRARY_EXTERNAL) || \
@@ -73,6 +74,10 @@ typedef pthread_mutex_t __libcpp_recursive_mutex_t;
 typedef pthread_cond_t __libcpp_condvar_t;
 #define _LIBCPP_CONDVAR_INITIALIZER PTHREAD_COND_INITIALIZER
 
+// Semaphore
+typedef sem_t __libcpp_semaphore_t;
+#define _LIBCPP_SEMAPHORE_MAX SEM_VALUE_MAX
+
 // Execute once
 typedef pthread_once_t __libcpp_exec_once_flag;
 #define _LIBCPP_EXEC_ONCE_INITIALIZER PTHREAD_ONCE_INIT
@@ -106,6 +111,10 @@ typedef void* __libcpp_recursive_mutex_t[5];
 typedef void* __libcpp_condvar_t;
 #define _LIBCPP_CONDVAR_INITIALIZER 0
 
+// Semaphore
+//typedef sem_t __libcpp_semaphore_t;
+//#define _LIBCPP_SEMAPHORE_MAX SEM_VALUE_MAX
+
 // Execute Once
 typedef void* __libcpp_exec_once_flag;
 #define _LIBCPP_EXEC_ONCE_INITIALIZER 0
@@ -125,6 +134,10 @@ typedef long __libcpp_tls_key;
 #endif // !defined(_LIBCPP_HAS_THREAD_API_PTHREAD) && !defined(_LIBCPP_HAS_THREAD_API_EXTERNAL)
 
 #if !defined(_LIBCPP_HAS_THREAD_API_EXTERNAL)
+
+_LIBCPP_THREAD_ABI_VISIBILITY
+__libcpp_timespec_t __libcpp_to_timespec(const chrono::nanoseconds& __ns);
+
 // Mutex
 _LIBCPP_THREAD_ABI_VISIBILITY
 int __libcpp_recursive_mutex_init(__libcpp_recursive_mutex_t *__m);
@@ -170,6 +183,23 @@ int __libcpp_condvar_timedwait(__libcpp_condvar_t *__cv, __libcpp_mutex_t *__m,
 _LIBCPP_THREAD_ABI_VISIBILITY
 int __libcpp_condvar_destroy(__libcpp_condvar_t* __cv);
 
+// Semaphore
+
+_LIBCPP_THREAD_ABI_VISIBILITY 
+bool __libcpp_semaphore_init(__libcpp_semaphore_t* __sem, int __init);
+
+_LIBCPP_THREAD_ABI_VISIBILITY
+bool __libcpp_semaphore_destroy(__libcpp_semaphore_t* __sem);
+
+_LIBCPP_THREAD_ABI_VISIBILITY
+bool __libcpp_semaphore_post(__libcpp_semaphore_t* __sem, int __inc);
+
+_LIBCPP_THREAD_ABI_VISIBILITY
+bool __libcpp_semaphore_wait(__libcpp_semaphore_t* __sem);
+
+_LIBCPP_THREAD_ABI_VISIBILITY
+bool __libcpp_semaphore_wait_timed(__libcpp_semaphore_t* __sem, chrono::nanoseconds const& __ns);
+
 // Execute once
 _LIBCPP_THREAD_ABI_VISIBILITY
 int __libcpp_execute_once(__libcpp_exec_once_flag *flag,
@@ -211,9 +241,9 @@ void __libcpp_thread_yield_processor();
 _LIBCPP_THREAD_ABI_VISIBILITY
 void __libcpp_thread_sleep_for(const chrono::nanoseconds& __ns);
 
-template<class F>
+template<class _F>
 _LIBCPP_THREAD_ABI_VISIBILITY
-void __libcpp_thread_poll_with_backoff(F && f);
+bool __libcpp_thread_poll_with_backoff(_F && __f, chrono::nanoseconds const& __max = chrono::nanoseconds::zero());
 
 // Thread local storage
 _LIBCPP_THREAD_ABI_VISIBILITY
@@ -231,6 +261,27 @@ int __libcpp_tls_set(__libcpp_tls_key __key, void *__p);
 #if (!defined(_LIBCPP_HAS_THREAD_LIBRARY_EXTERNAL) || \
      defined(_LIBCPP_BUILDING_THREAD_LIBRARY_EXTERNAL)) && \
     defined(_LIBCPP_HAS_THREAD_API_PTHREAD)
+
+__libcpp_timespec_t __libcpp_to_timespec(const chrono::nanoseconds& __ns) {
+
+   using namespace chrono;
+   seconds __s = duration_cast<seconds>(__ns);
+   __libcpp_timespec_t __ts;
+   typedef decltype(__ts.tv_sec) ts_sec;
+   _LIBCPP_CONSTEXPR ts_sec __ts_sec_max = numeric_limits<ts_sec>::max();
+
+   if (__s.count() < __ts_sec_max)
+   {
+     __ts.tv_sec = static_cast<ts_sec>(__s.count());
+     __ts.tv_nsec = static_cast<decltype(__ts.tv_nsec)>((__ns - __s).count());
+   }
+   else
+   {
+     __ts.tv_sec = __ts_sec_max;
+     __ts.tv_nsec = 999999999; // (10^9 - 1)
+   }
+   return __ts;
+}
 
 int __libcpp_recursive_mutex_init(__libcpp_recursive_mutex_t *__m)
 {
@@ -323,6 +374,35 @@ int __libcpp_condvar_destroy(__libcpp_condvar_t *__cv)
   return pthread_cond_destroy(__cv);
 }
 
+// Semaphore
+
+bool __libcpp_semaphore_init(__libcpp_semaphore_t* __sem, int __init) 
+{
+    return sem_init(__sem, 0, __init) == 0;
+}
+
+bool __libcpp_semaphore_destroy(__libcpp_semaphore_t* __sem) 
+{
+    return sem_destroy(__sem) == 0;
+}
+
+bool __libcpp_semaphore_post(__libcpp_semaphore_t* __sem, int __inc) 
+{
+    assert(__inc == 1);
+    return sem_post(__sem) == 0;
+}
+
+bool __libcpp_semaphore_wait(__libcpp_semaphore_t* __sem) 
+{
+    return sem_wait(__sem) == 0;
+}
+
+bool __libcpp_semaphore_wait_timed(__libcpp_semaphore_t* __sem, chrono::nanoseconds const& __ns) 
+{
+    auto __ts = __libcpp_to_timespec(__ns);
+    return sem_timedwait(__sem, &__ts) == 0;
+}
+
 // Execute once
 int __libcpp_execute_once(__libcpp_exec_once_flag *flag,
                           void (*init_routine)()) {
@@ -404,34 +484,18 @@ void __libcpp_thread_sleep_for(const chrono::nanoseconds& __ns)
    assert(step < numeric_limits<unsigned>::max());
    asm volatile("nanosleep.u32 %0;"::"r"((unsigned)step):);
 #else
-   using namespace chrono;
-   seconds __s = duration_cast<seconds>(__ns);
-   __libcpp_timespec_t __ts;
-   typedef decltype(__ts.tv_sec) ts_sec;
-   _LIBCPP_CONSTEXPR ts_sec __ts_sec_max = numeric_limits<ts_sec>::max();
-
-   if (__s.count() < __ts_sec_max)
-   {
-     __ts.tv_sec = static_cast<ts_sec>(__s.count());
-     __ts.tv_nsec = static_cast<decltype(__ts.tv_nsec)>((__ns - __s).count());
-   }
-   else
-   {
-     __ts.tv_sec = __ts_sec_max;
-     __ts.tv_nsec = 999999999; // (10^9 - 1)
-   }
-
+   auto __ts = __libcpp_to_timespec(__ns);
    while (nanosleep(&__ts, &__ts) == -1 && errno == EINTR);
 #endif
 }
 
 template<class _F>
-void __libcpp_thread_poll_with_backoff(_F && __f) 
+bool __libcpp_thread_poll_with_backoff(_F && __f, chrono::nanoseconds const& __max) 
 {
     auto const __start = chrono::high_resolution_clock::now();
     for(int count = 0;;) {
       if(__builtin_expect(__f(),1))
-        return;
+        return true;
       if(count < 16) {
         if(count > 8)
           __libcpp_thread_yield_processor();
@@ -439,6 +503,9 @@ void __libcpp_thread_poll_with_backoff(_F && __f)
         continue;
       }
       auto const __elapsed = chrono::high_resolution_clock::now() - __start;
+      if(__max != chrono::nanoseconds::zero() &&
+         __max < __elapsed)
+         return false;
       auto const __step = __elapsed / 4;
       if(__step >= chrono::milliseconds(1))
         __libcpp_thread_sleep_for(chrono::milliseconds(1));
