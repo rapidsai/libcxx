@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #ifndef _LIBCPP_HAS_NO_THREADS
-#include "simt/barrier"
+#include "barrier"
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 

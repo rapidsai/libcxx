@@ -304,20 +304,17 @@ public:
         return old & phase_bit;
     }
     inline _LIBCPP_INLINE_VISIBILITY 
-    void wait(arrival_token&& phase) const 
+    void wait(arrival_token&& phase) const
     {
-        __libcpp_thread_poll_with_backoff([&] _LIBCPP_INLINE_VISIBILITY () -> bool {
+#if defined(__CUDACC__)
+        __libcpp_thread_poll_with_backoff([&] _LIBCPP_INLINE_VISIBILITY () -> bool
+#else
+        __libcpp_thread_poll_with_backoff([&]() -> bool
+#endif
+        {
             uint64_t const current = phase_arrived_expected.load(memory_order_acquire);
             return ((current & phase_bit) != phase);
         });
-        /*
-        while(1) {
-            uint64_t const current = phase_arrived_expected.load(memory_order_acquire);
-            if((current & phase_bit) != phase)
-                return;
-            phase_arrived_expected.wait(current, memory_order_relaxed);
-        }
-        */
     }
 	inline _LIBCPP_INLINE_VISIBILITY
     void arrive_and_wait() 

@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #ifndef _LIBCPP_HAS_NO_THREADS
-#include "functional"
 #include "atomic"
 
 _LIBCPP_BEGIN_NAMESPACE_STD

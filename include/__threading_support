@@ -608,7 +608,7 @@ struct alignas(64) __libcpp_contention_t {
 #endif
 };
 
-extern __libcpp_contention_t * __libcpp_contention_state(volatile void const * p);
+__libcpp_contention_t * __libcpp_contention_state(void const volatile * p) _NOEXCEPT;
 
 #endif // _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
 
