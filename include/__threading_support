@@ -37,18 +37,6 @@
 # include <sched.h>
 #endif
 
-#if defined(__CUDA_ARCH__)
-# define _LIBCPP_YIELD_PROCESSOR()
-#elif defined(__aarch64__)
-# define _LIBCPP_YIELD_PROCESSOR() asm volatile ("yield" ::: "memory")
-#elif defined(__x86_64__)
-# define _LIBCPP_YIELD_PROCESSOR() asm volatile ("pause" ::: "memory")
-#elif defined (__powerpc__)
-# define _LIBCPP_YIELD_PROCESSOR() asm volatile ("or 27,27,27" ::: "memory")
-#else
-# define _LIBCPP_YIELD_PROCESSOR()
-#endif
-
 #if defined(_LIBCPP_HAS_THREAD_LIBRARY_EXTERNAL) || \
     defined(_LIBCPP_BUILDING_THREAD_LIBRARY_EXTERNAL) || \
     defined(_LIBCPP_HAS_THREAD_API_WIN32)
@@ -218,6 +206,9 @@ _LIBCPP_THREAD_ABI_VISIBILITY
 void __libcpp_thread_yield();
 
 _LIBCPP_THREAD_ABI_VISIBILITY
+void __libcpp_thread_yield_processor();
+
+_LIBCPP_THREAD_ABI_VISIBILITY
 void __libcpp_thread_sleep_for(const chrono::nanoseconds& __ns);
 
 // Thread local storage
@@ -380,11 +371,35 @@ int __libcpp_thread_detach(__libcpp_thread_t *__t)
 
 void __libcpp_thread_yield()
 {
+#ifdef __CUDA_ARCH__
+  __libcpp_thread_sleep_for(chrono::nanoseconds::zero());
+#else
   sched_yield();
+#endif
+}
+
+void __libcpp_thread_yield_processor()
+{
+#if defined(__CUDA_ARCH__)
+  ;
+#elif defined(__aarch64__)
+  asm volatile ("yield" :::);
+#elif defined(__x86_64__)
+  asm volatile ("pause" :::);
+#elif defined (__powerpc__)
+  asm volatile ("or 27,27,27":::);
+#else
+  ;
+#endif
 }
 
 void __libcpp_thread_sleep_for(const chrono::nanoseconds& __ns)
 {
+#ifdef __CUDA_ARCH__
+   auto const step = __ns.count();
+   assert(step < numeric_limits<unsigned>::max());
+   asm volatile("nanosleep.u32 %0;"::"r"((unsigned)step):);
+#else
    using namespace chrono;
    seconds __s = duration_cast<seconds>(__ns);
    __libcpp_timespec_t __ts;
@@ -403,6 +418,7 @@ void __libcpp_thread_sleep_for(const chrono::nanoseconds& __ns)
    }
 
    while (nanosleep(&__ts, &__ts) == -1 && errno == EINTR);
+#endif
 }
 
 // Thread local storage

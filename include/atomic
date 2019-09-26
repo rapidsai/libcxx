@@ -1603,11 +1603,9 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_wait(__cxx_atomic_impl<_Tp, _Sco> co
         if(__cxx_atomic_load(__a, order) != val)
             return;
         if(i < 12)
-            _LIBCPP_YIELD_PROCESSOR();
-#ifndef __CUDA_ARCH__
+            __libcpp_thread_yield_processor();
         else
             __libcpp_thread_yield();
-#endif
     }
 #endif
     while(val == __cxx_atomic_load(__a, order))

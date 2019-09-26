@@ -58,15 +58,11 @@ void __barrier_poll_wait(F && f) {
         assert(elapsed >= chrono::nanoseconds::zero());
         auto const step = elapsed.count() >> 2;
         if(step > 2500)
-#ifdef __CUDA_ARCH__
-            asm("nanosleep.u32 %0;" :: "r"((unsigned)step) : "memory");
-#else
             __libcpp_thread_sleep_for(chrono::nanoseconds(step));
         else if(step > 1000)
             __libcpp_thread_yield();
         else
-            _LIBCPP_YIELD_PROCESSOR();
-#endif
+            __libcpp_thread_yield_processor();
     }
 }
 
