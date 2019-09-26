@@ -548,6 +548,7 @@ void atomic_signal_fence(memory_order m) noexcept;
 
 #ifndef __simt__
 #include <__config>
+#include <__threading_support>
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -1410,7 +1411,7 @@ __cxx_atomic_impl<_Tp, _Sco>* __cxx_atomic_rebind(_Tp* __inst) {
 #ifdef _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
 
 template <class _Tp, int _Sco>
-_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow_fallback(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, int order) {
+_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow_fallback(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, memory_order order) {
     __libcpp_thread_poll_with_backoff([=] _LIBCPP_INLINE_VISIBILITY () -> bool {
         return __cxx_atomic_load(__a, order) != val;
     });
@@ -1435,7 +1436,7 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_notify_one(__cxx_atomic_impl<_Tp, _S
     __cxx_atomic_notify_all(__a);
 }
 template <class _Tp, int _Sco, typename std::enable_if<!__libcpp_platform_wait_uses_type<_Tp>::value, int>::type = 1>
-_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp const val, int order) {
+_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp const val, memory_order order) {
 #ifndef _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
     auto * const c = __libcpp_contention_state(__a);
     __cxx_atomic_store(__cxx_atomic_rebind<_Sco>(&c->waiters), (ptrdiff_t)1, memory_order_relaxed);
@@ -1455,7 +1456,7 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp,
 }
 
 template <class _Tp, int _Sco, typename std::enable_if<__libcpp_platform_wait_uses_type<_Tp>::value, int>::type = 1>
-_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, int order) {
+_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, memory_order order) {
 #ifndef _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
     auto * const c = __libcpp_contention_state(__a);
     __cxx_atomic_fetch_add(__cxx_atomic_rebind<_Sco>(&c->waiters), (ptrdiff_t)1, memory_order_relaxed);
@@ -1491,9 +1492,9 @@ template <class _Tp, int _Sco>
 _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_notify_all(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a) {
     auto * const c = __libcpp_contention_state(__a);
     __cxx_atomic_thread_fence(memory_order_seq_cst);
-    if(__builtin_expect(0 == __cxx_atomic_load(__cxx_atomic_rebind<_Sco>(&c->credit)__cxx_atomic_rebind<_Sco>(, memory_order_relaxed), 1))
+    if(__builtin_expect(0 == __cxx_atomic_load(__cxx_atomic_rebind<_Sco>(&c->credit), memory_order_relaxed), 1))
         return;
-    if(0 != __cxx_atomic_exchange_n(__cxx_atomic_rebind<_Sco>(&c->credit), (ptrdiff_t)0, memory_order_relaxed)) {
+    if(0 != __cxx_atomic_exchange(__cxx_atomic_rebind<_Sco>(&c->credit), (ptrdiff_t)0, memory_order_relaxed)) {
         __libcpp_mutex_lock(&c->mutex);
         __libcpp_mutex_unlock(&c->mutex);
         __libcpp_condvar_broadcast(&c->condvar);
@@ -1504,7 +1505,7 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_notify_one(__cxx_atomic_impl<_Tp, _S
     __cxx_atomic_notify_all(__a);
 }
 template <class _Tp, int _Sco>
-_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp const val, int order) {
+_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp const val, memory_order order) {
     auto * const c = __libcpp_contention_state(__a);
     __libcpp_mutex_lock(&c->mutex);
     __cxx_atomic_store(__cxx_atomic_rebind<_Sco>(&c->credit), (ptrdiff_t)1, memory_order_relaxed);
@@ -1517,7 +1518,7 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp,
 #else
 
 template <class _Tp, int _Sco>
-_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, int order) {
+_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp val, memory_order order) {
     __cxx_atomic_try_wait_slow_fallback(__a, val, order);
 }
 
@@ -1532,7 +1533,7 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_notify_all(__cxx_atomic_impl<_Tp, _S
 #endif // _LIBCPP_HAS_PLATFORM_WAIT || !defined(_LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE)
 
 template <class _Tp, int _Sco>
-_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_wait(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp const val, int order) {
+_LIBCPP_INLINE_VISIBILITY void __cxx_atomic_wait(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp const val, memory_order order) {
 #ifndef _LIBCPP_NO_SPINNING
     if(__builtin_expect(__cxx_atomic_load(__a, order) != val,1))
         return;
@@ -1663,7 +1664,7 @@ private:
 
 #if defined(__cpp_lib_atomic_is_always_lock_free)
 template <class _Tp, int _Sco, bool __b>
-_LIBCPP_CONSTEXPR bool __atomic_base<_Tp, __b>::is_always_lock_free;
+_LIBCPP_CONSTEXPR bool __atomic_base<_Tp, _Sco, __b>::is_always_lock_free;
 #endif
 
 // atomic<Integral>
@@ -2731,10 +2732,7 @@ typedef atomic<ptrdiff_t> atomic_ptrdiff_t;
 typedef atomic<intmax_t>  atomic_intmax_t;
 typedef atomic<uintmax_t> atomic_uintmax_t;
 
-static_assert(__cxx_is_always_lock_free<int>::__value,
-                "This library assumes atomic<int> is lock-free.");
-static_assert(__cxx_is_always_lock_free<unsigned>::__value,
-                "This library assumes atomic<unsigned> is lock-free.");
+static_assert(ATOMIC_INT_LOCK_FREE, "This library assumes atomic<int> is lock-free.");
 
 typedef atomic<int>       atomic_signed_lock_free;
 typedef atomic<unsigned>  atomic_unsigned_lock_free;
