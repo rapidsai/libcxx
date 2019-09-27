@@ -72,68 +72,58 @@ struct EmptyCompletionF
 #ifndef _LIBCPP_HAS_NO_BARRIER_BUTTERFLY
 
 template<class CompletionF = EmptyCompletionF, int _Sco = 0>
-class __barrier_base {
+class alignas(64) __barrier_base {
 
-    using __phase_t = uint8_t;    
-
-    struct alignas(64) __state_t {
-        struct { 
-            __atomic_base<__phase_t, _Sco> value = ATOMIC_VAR_INIT(0);
-        } phases[64]; //< this many rounds could barrier the universe
-    };
-
-    alignas(64) ptrdiff_t           expected;
+    ptrdiff_t                       expected;
     __atomic_base<ptrdiff_t, _Sco>  expected_adjustment;
-    __atomic_base<__phase_t, _Sco>  phase;
-    alignas(64) vector<__state_t>   state;
     CompletionF                     completion;
 
-    inline _LIBCPP_INLINE_VISIBILITY
-    static constexpr __phase_t __next_phase(__phase_t old) 
-    { 
-        return (old + 1) & 3; 
+    using __phase_t = uint8_t;
+    __atomic_base<__phase_t, _Sco>  phase;
+
+    struct alignas(64) __state_t {
+        struct {
+            __atomic_base<__phase_t, _Sco> phase = ATOMIC_VAR_INIT(0);
+        } tickets[64];
+    };
+    vector<__state_t>   state;
+
+    size_t __rounds(ptrdiff_t __expected) {
+        return __expected == 1 ? 0 : 1 + __rounds(__expected >> 1);
     }
+
     inline _LIBCPP_INLINE_VISIBILITY
-    bool __try_get_id(ptrdiff_t const id, __phase_t const old_phase, __phase_t const next_phase) 
-    {
-        return old_phase == state[id].phases[63].value.exchange(next_phase, memory_order_relaxed);
-    }
-    inline _LIBCPP_INLINE_VISIBILITY
-    ptrdiff_t __get_id(__phase_t const old_phase, __phase_t const next_phase) 
-    {
-#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-        ptrdiff_t id = __libcpp_thread_favorite_hash;
-#else
+    bool __arrive(__phase_t const old_phase) {
         ptrdiff_t id = 0;
-#endif
-        while(1) {
-            if(id >= expected)
-                id = 0;
-            if(__try_get_id(id, old_phase, next_phase))
-                break;
-            ++id;
+        if(id >= expected)
+            id = 0;
+        ptrdiff_t current = id;
+        size_t const rounds = __rounds(expected);
+        for(size_t round = 0; round < rounds; ++round, current >>= 1) {
+            for(;; ++current) {
+                assert(current < expected);
+                __phase_t expect = old_phase;
+                if(state[current].tickets[round].phase.compare_exchange_strong(expect, old_phase + 1, memory_order_release, memory_order_relaxed))
+                    return false;  // I'm first to get this far, done with arrival
+                else if(expect == old_phase + 1 && 
+                        state[current].tickets[round].phase.compare_exchange_strong(expect, old_phase + 2, memory_order_acquire, memory_order_relaxed))
+                    break;   // I'm second, go to the next round
+                else if(expect == old_phase + 2)
+                    assert(round == 0); // Keep looking in the first round
+                else 
+                    assert(0);
+            }
         }
-#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-        __libcpp_thread_favorite_hash = id;
-#endif
-        return id;
+        return true;
     }
 
 public:
-    struct arrival_token 
-    { 
-        __atomic_base<__phase_t, _Sco>& phase;
-        __phase_t old_phase;
-
-        inline _LIBCPP_INLINE_VISIBILITY
-        arrival_token(__atomic_base<__phase_t, _Sco>& phase, __phase_t old_phase) :
-            phase(phase), old_phase(old_phase) { }
-    };
+    using arrival_token = __phase_t;
     
     inline _LIBCPP_INLINE_VISIBILITY
     __barrier_base(ptrdiff_t expected, CompletionF completion = CompletionF()) 
-            : expected(expected), expected_adjustment(0), phase(0),
-              state(expected), completion(completion) 
+            : expected(expected), expected_adjustment(0), completion(completion), 
+              phase(0), state(expected)
     { 
         assert(expected >= 0);
     }
@@ -147,41 +137,22 @@ public:
     [[nodiscard]] inline _LIBCPP_INLINE_VISIBILITY
     arrival_token arrive(ptrdiff_t update = 1) 
     {
-        assert(update == 1); // should be "> 0);"
-        size_t* const my_ids = (size_t*)alloca(update * sizeof(size_t));
+        assert(update > 0);
         auto const old_phase = phase.load(memory_order_relaxed);
-        auto const next_phase = __next_phase(old_phase);
-        bool master = false;
-        for(ptrdiff_t i = 0; i < update; ++i) {
-            auto const id = __get_id(old_phase, next_phase);
-            my_ids[i] = id;
-                master = true;
-        }
-        for(ptrdiff_t j = 1, k = 0; j < expected; j <<= 1, ++k) {
-            atomic_thread_fence(memory_order_release);
-            for(ptrdiff_t i = 0; i < update; ++i) {
-                auto id = my_ids[i] + j;
-                if(id >= (size_t)expected)
-                   id -= expected;
-                state[id].phases[k].value.store(next_phase, memory_order_relaxed);
+        for(; update; --update)
+            if(__arrive(old_phase)) {
+                assert(update == 1);
+                completion();
+                expected += expected_adjustment.exchange(0, memory_order_relaxed);
+                phase.store(old_phase + 2, std::memory_order_release);
             }
-            for(ptrdiff_t i = 0; i < update; ++i)
-                while(state[my_ids[i]].phases[k].value.load(memory_order_relaxed) == old_phase)
-                    ;
-            atomic_thread_fence(memory_order_acquire);
-        }
-        if(master) {
-            completion();
-            expected += expected_adjustment.exchange(0, memory_order_relaxed);
-            phase.store(next_phase, memory_order_release);
-        }
-        return arrival_token(phase, old_phase);
+        return old_phase;
     }
     inline _LIBCPP_INLINE_VISIBILITY
-    void wait(arrival_token&& token) const 
+    void wait(arrival_token&& old_phase) const 
     {
         __libcpp_thread_poll_with_backoff([&]() -> bool {
-            return token.phase.load(memory_order_acquire) != token.old_phase;
+            return phase.load(memory_order_acquire) != old_phase;
         });
     }
 	inline _LIBCPP_INLINE_VISIBILITY
