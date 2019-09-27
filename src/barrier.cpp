@@ -11,10 +11,10 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if defined(_LIBCPP_BARRIER_BUTTERFLY) && !defined(_LIBCPP_HAS_NO_THREAD_FAVORITE_HASH)
+#if !defined(_LIBCPP_HAS_NO_BARRIER_BUTTERFLY) && !defined(_LIBCPP_HAS_NO_THREAD_FAVORITE_HASH)
 
-thread_local size_t __libcpp_thread_favorite_hash =
-    static_cast<size_t>(__libcpp_thread_get_current_id());
+thread_local ptrdiff_t __libcpp_thread_favorite_hash = 0;
+//    hash<__thread_id>()(this_thread::get_id());
 
 #endif
 

@@ -19,7 +19,7 @@ __libcpp_contention_t * __libcpp_contention_state(void const volatile * p) _NOEX
     return contention + ((std::uintptr_t)p & 255);
 }
 
-#endif
+#endif //_LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
 
 _LIBCPP_END_NAMESPACE_STD
 
