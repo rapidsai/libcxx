@@ -47,6 +47,10 @@ namespace std
 #include <__config>
 #include <__threading_support>
 #include <atomic>
+# ifndef _LIBCPP_HAS_NO_BARRIER_BUTTERFLY
+#  include <thread>
+#  include <vector>
+# endif
 #endif
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
@@ -65,7 +69,7 @@ struct EmptyCompletionF
     void operator()() noexcept { }
 };
 
-#ifdef _LIBCPP_BARRIER_BUTTERFLY
+#ifndef _LIBCPP_HAS_NO_BARRIER_BUTTERFLY
 
 template<class CompletionF = EmptyCompletionF, int _Sco = 0>
 class __barrier_base {
@@ -79,10 +83,9 @@ class __barrier_base {
     };
 
     alignas(64) ptrdiff_t           expected;
-    ptrdiff_t                       expected_steps;
     __atomic_base<ptrdiff_t, _Sco>  expected_adjustment;
     __atomic_base<__phase_t, _Sco>  phase;
-    alignas(64) __state_t*          state;
+    alignas(64) vector<__state_t>   state;
     CompletionF                     completion;
 
     inline _LIBCPP_INLINE_VISIBILITY
@@ -91,51 +94,34 @@ class __barrier_base {
         return (old + 1) & 3; 
     }
     inline _LIBCPP_INLINE_VISIBILITY
-    bool __try_get_id(size_t id, __phase_t old_phase) 
+    bool __try_get_id(ptrdiff_t const id, __phase_t const old_phase, __phase_t const next_phase) 
     {
-        return state[id].phases[63].value.compare_exchange_strong(old_phase, 
-                                                                  __next_phase(old_phase), 
-                                                                  memory_order_relaxed);
+        return old_phase == state[id].phases[63].value.exchange(next_phase, memory_order_relaxed);
     }
     inline _LIBCPP_INLINE_VISIBILITY
-    size_t __get_id(__phase_t const old_phase, ptrdiff_t count) 
+    ptrdiff_t __get_id(__phase_t const old_phase, __phase_t const next_phase) 
     {
 #ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-        if(__libcpp_thread_favorite_hash == ~0)
-            __libcpp_thread_favorite_hash = static_cast<size_t>(__libcpp_thread_get_current_id());
-#endif
-        for(auto i = 0; i < count; ++i) {
-            
-#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-            auto id = __libcpp_thread_favorite_hash + i;
+        ptrdiff_t id = __libcpp_thread_favorite_hash;
 #else
-            auto id = static_cast<size_t>(__libcpp_thread_get_current_id()) + i;
+        ptrdiff_t id = 0;
 #endif
-            if(id > count)
-                id %= count;
-            if(__builtin_expect(__try_get_id(id, old_phase), 1)) {
-#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-                __libcpp_thread_favorite_hash = id;
-#endif
-                return id;
-            }
+        while(1) {
+            if(id >= expected)
+                id = 0;
+            if(__try_get_id(id, old_phase, next_phase))
+                break;
+            ++id;
         }
-        return ~0ull;
-    }
-    inline _LIBCPP_INLINE_VISIBILITY
-    static constexpr uint32_t __log2_floor(ptrdiff_t count) 
-    { 
-        return count <= 1 ? 0 : 1 + __log2_floor(count >> 1); 
-    }
-    inline _LIBCPP_INLINE_VISIBILITY
-    static constexpr uint32_t __log2_ceil(ptrdiff_t count) 
-    { 
-        auto const t = __log2_floor(count);
-        return count == (1 << t) ? t : t + 1;
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
+        __libcpp_thread_favorite_hash = id;
+#endif
+        return id;
     }
 
 public:
-    struct arrival_token { 
+    struct arrival_token 
+    { 
         __atomic_base<__phase_t, _Sco>& phase;
         __phase_t old_phase;
 
@@ -143,18 +129,17 @@ public:
         arrival_token(__atomic_base<__phase_t, _Sco>& phase, __phase_t old_phase) :
             phase(phase), old_phase(old_phase) { }
     };
-
+    
     inline _LIBCPP_INLINE_VISIBILITY
     __barrier_base(ptrdiff_t expected, CompletionF completion = CompletionF()) 
-            : expected(expected), expected_steps(__log2_ceil(expected)), 
-              expected_adjustment(0), phase(0),
-              state(expected > 0 ? new __state_t[expected] : nullptr), completion(completion) 
+            : expected(expected), expected_adjustment(0), phase(0),
+              state(expected), completion(completion) 
     { 
         assert(expected >= 0);
     }
 
     inline _LIBCPP_INLINE_VISIBILITY
-    ~__barrier_base() { if(nullptr != state) delete [] state; };
+    ~__barrier_base() = default;
 
     __barrier_base(__barrier_base const&) = delete;
     __barrier_base& operator=(__barrier_base const&) = delete;
@@ -162,28 +147,33 @@ public:
     [[nodiscard]] inline _LIBCPP_INLINE_VISIBILITY
     arrival_token arrive(ptrdiff_t update = 1) 
     {
-
-        size_t id = 0; // assume, for now
+        assert(update == 1); // should be "> 0);"
+        size_t* const my_ids = (size_t*)alloca(update * sizeof(size_t));
         auto const old_phase = phase.load(memory_order_relaxed);
-        auto const count = expected;
-        assert(count > 0);
-        auto const steps = expected_steps;
-        if(0 != steps) {
-            id = __get_id(old_phase, count);
-            assert(id != ~0ull);
-            for(uint32_t k = 0;k < steps; ++k) {
-                auto const index = steps - k - 1;
-                state[(id + (1 << k)) % count].phases[index].value.store(__next_phase(old_phase), memory_order_release);
-                while(state[id].phases[index].value.load(memory_order_acquire) == old_phase)
-                    ;
-            }
+        auto const next_phase = __next_phase(old_phase);
+        bool master = false;
+        for(ptrdiff_t i = 0; i < update; ++i) {
+            auto const id = __get_id(old_phase, next_phase);
+            my_ids[i] = id;
+                master = true;
         }
-        if(0 == id) {
+        for(ptrdiff_t j = 1, k = 0; j < expected; j <<= 1, ++k) {
+            atomic_thread_fence(memory_order_release);
+            for(ptrdiff_t i = 0; i < update; ++i) {
+                auto id = my_ids[i] + j;
+                if(id >= (size_t)expected)
+                   id -= expected;
+                state[id].phases[k].value.store(next_phase, memory_order_relaxed);
+            }
+            for(ptrdiff_t i = 0; i < update; ++i)
+                while(state[my_ids[i]].phases[k].value.load(memory_order_relaxed) == old_phase)
+                    ;
+            atomic_thread_fence(memory_order_acquire);
+        }
+        if(master) {
             completion();
-            expected += expected_adjustment.load(memory_order_relaxed);
-            expected_steps = __log2_ceil(expected);
-            expected_adjustment.store(0, memory_order_relaxed);
-            phase.store(__next_phase(old_phase), memory_order_release);
+            expected += expected_adjustment.exchange(0, memory_order_relaxed);
+            phase.store(next_phase, memory_order_release);
         }
         return arrival_token(phase, old_phase);
     }
@@ -296,8 +286,9 @@ public:
     [[nodiscard]] inline _LIBCPP_INLINE_VISIBILITY
     arrival_token arrive(ptrdiff_t update = 1) 
     {
-        auto const old = phase_arrived_expected.fetch_add(arrived_unit, memory_order_acq_rel);
-        if((old ^ (old + arrived_unit)) & phase_bit) {
+        auto const inc = arrived_unit * update;
+        auto const old = phase_arrived_expected.fetch_add(inc, memory_order_acq_rel);
+        if((old ^ (old + inc)) & phase_bit) {
             phase_arrived_expected.fetch_add((old & expected_mask) << 32, memory_order_relaxed);
             phase_arrived_expected.notify_all();
         }
@@ -329,7 +320,7 @@ public:
     }
 };
 
-#endif //_LIBCPP_BARRIER_BUTTERFLY
+#endif //_LIBCPP_HAS_NO_BARRIER_BUTTERFLY
 
 template<class CompletionF = EmptyCompletionF>
 class barrier : public __barrier_base<CompletionF> {

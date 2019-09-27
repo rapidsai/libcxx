@@ -612,9 +612,9 @@ __libcpp_contention_t * __libcpp_contention_state(void const volatile * p) _NOEX
 
 #endif // _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
 
-#if defined(_LIBCPP_BARRIER_BUTTERFLY) && !defined(_LIBCPP_HAS_NO_THREAD_FAVORITE_HASH)
+#if !defined(_LIBCPP_HAS_NO_BARRIER_BUTTERFLY) && !defined(_LIBCPP_HAS_NO_THREAD_FAVORITE_HASH)
 
-extern thread_local size_t __libcpp_thread_favorite_hash;
+extern thread_local ptrdiff_t __libcpp_thread_favorite_hash;
 
 #endif
 
