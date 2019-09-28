@@ -163,9 +163,9 @@ public:
         for(; update; --update)
             if(__arrive(old_phase)) {
                 completion();
-                expected += expected_adjustment.exchange(0, memory_order_relaxed);
-                if(!phase.compare_exchange_strong(old_phase, old_phase + 2, memory_order_release))
-                    assert(0);
+                expected += expected_adjustment.load(memory_order_relaxed);
+                expected_adjustment.store(0, memory_order_relaxed);
+                phase.store(old_phase + 2, memory_order_release);
             }
         return old_phase;
     }
