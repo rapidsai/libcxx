@@ -8,24 +8,23 @@
 //
 // UNSUPPORTED: libcpp-has-no-threads
 
-// <barrier>
+// <latch>
 
-#include <barrier>
+#include <latch>
+#include <thread>
 
 #include "test_macros.h"
 
 int main(int, char**)
 {
-  std::barrier b(2);
+  std::latch l(2);
   
-  auto tok = b.arrive();
+  l.count_down();
   std::thread t([&](){ 
-    (void)b.arrive();
+    l.count_down();
   });
-  b.wait(std::move(tok));
+  l.wait();
   t.join();
 
-  auto tok2 = b.arrive(2);
-  b.wait(std::move(tok2));
   return 0;
 }

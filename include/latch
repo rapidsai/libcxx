@@ -42,6 +42,7 @@ namespace std
 #include <__config>
 #include <__threading_support>
 #include <atomic>
+#include <cassert>
 #endif
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)

@@ -47,7 +47,7 @@ namespace std
 #include <__config>
 #include <__threading_support>
 #include <atomic>
-# ifndef _LIBCPP_HAS_NO_BARRIER_BUTTERFLY
+# ifndef _LIBCPP_HAS_NO_TREE_BARRIER
 #  include <thread>
 #  include <vector>
 # endif
@@ -69,7 +69,7 @@ struct EmptyCompletionF
     void operator()() noexcept { }
 };
 
-#ifndef _LIBCPP_HAS_NO_BARRIER_BUTTERFLY
+#ifndef _LIBCPP_HAS_NO_TREE_BARRIER
 
 template<class CompletionF = EmptyCompletionF, int _Sco = 0>
 class alignas(64) __barrier_base {
@@ -78,7 +78,7 @@ class alignas(64) __barrier_base {
     __atomic_base<ptrdiff_t, _Sco>  expected_adjustment;
     CompletionF                     completion;
 
-    using __phase_t = uint32_t;
+    using __phase_t = uint8_t;
     __atomic_base<__phase_t, _Sco>  phase;
 
     struct alignas(64) __state_t 
@@ -90,26 +90,28 @@ class alignas(64) __barrier_base {
     ::std::vector<__state_t>   state;
 
     inline _LIBCPP_INLINE_VISIBILITY
-    size_t __rounds_floor(ptrdiff_t __expected) 
-    {
-        return __expected == 1 ? 0 : 1 + __rounds_floor(__expected >> 1);
-    }
-    inline _LIBCPP_INLINE_VISIBILITY
-    size_t __rounds_ceil(ptrdiff_t __expected) 
-    {
-        return __expected == 1 ? 1 : 1 + __rounds_floor(__expected - 1);
-    }
-
-    inline _LIBCPP_INLINE_VISIBILITY
     bool __arrive(__phase_t const old_phase)
     {
         __phase_t const half = old_phase + 1, full = old_phase + 2;
-        ptrdiff_t current = 0, current_expected = expected, last_node = (current_expected >> 1);
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
+        ptrdiff_t current = __libcpp_thread_favorite_hash, 
+#else
+        ptrdiff_t current = 0, 
+#endif
+                  current_expected = expected, 
+                  last_node = (current_expected >> 1);
         for(size_t round = 0;; ++round) {
             assert(round <= 63);
             if(current_expected == 1)
                 return true;
             for(;;++current) {
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
+                if(0 == round) {
+                    if(current >= current_expected)
+                        current = 0;
+                    __libcpp_thread_favorite_hash = current;
+                }
+#endif
                 assert(current <= last_node);
                 __phase_t expect = old_phase;
                 if(current == last_node && (current_expected & 1))
@@ -310,7 +312,7 @@ public:
     }
 };
 
-#endif //_LIBCPP_HAS_NO_BARRIER_BUTTERFLY
+#endif //_LIBCPP_HAS_NO_TREE_BARRIER
 
 template<class CompletionF = EmptyCompletionF>
 class barrier : public __barrier_base<CompletionF> {
