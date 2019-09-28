@@ -78,43 +78,62 @@ class alignas(64) __barrier_base {
     __atomic_base<ptrdiff_t, _Sco>  expected_adjustment;
     CompletionF                     completion;
 
-    using __phase_t = uint8_t;
+    using __phase_t = uint32_t;
     __atomic_base<__phase_t, _Sco>  phase;
 
-    struct alignas(64) __state_t {
+    struct alignas(64) __state_t 
+    {
         struct {
             __atomic_base<__phase_t, _Sco> phase = ATOMIC_VAR_INIT(0);
         } tickets[64];
     };
-    vector<__state_t>   state;
+    ::std::vector<__state_t>   state;
 
-    size_t __rounds(ptrdiff_t __expected) {
-        return __expected == 1 ? 0 : 1 + __rounds(__expected >> 1);
+    inline _LIBCPP_INLINE_VISIBILITY
+    size_t __rounds_floor(ptrdiff_t __expected) 
+    {
+        return __expected == 1 ? 0 : 1 + __rounds_floor(__expected >> 1);
+    }
+    inline _LIBCPP_INLINE_VISIBILITY
+    size_t __rounds_ceil(ptrdiff_t __expected) 
+    {
+        return __expected == 1 ? 1 : 1 + __rounds_floor(__expected - 1);
     }
 
     inline _LIBCPP_INLINE_VISIBILITY
-    bool __arrive(__phase_t const old_phase) {
-        ptrdiff_t id = 0;
-        if(id >= expected)
-            id = 0;
-        ptrdiff_t current = id;
-        size_t const rounds = __rounds(expected);
-        for(size_t round = 0; round < rounds; ++round, current >>= 1) {
-            for(;; ++current) {
-                assert(current < expected);
+    bool __arrive(__phase_t const old_phase)
+    {
+        __phase_t const half = old_phase + 1, full = old_phase + 2;
+        ptrdiff_t current = 0, current_expected = expected, last_node = (current_expected >> 1);
+        for(size_t round = 0;; ++round) {
+            assert(round <= 63);
+            if(current_expected == 1)
+                return true;
+            for(;;++current) {
+                assert(current <= last_node);
                 __phase_t expect = old_phase;
-                if(state[current].tickets[round].phase.compare_exchange_strong(expect, old_phase + 1, memory_order_release, memory_order_relaxed))
-                    return false;  // I'm first to get this far, done with arrival
-                else if(expect == old_phase + 1 && 
-                        state[current].tickets[round].phase.compare_exchange_strong(expect, old_phase + 2, memory_order_acquire, memory_order_relaxed))
-                    break;   // I'm second, go to the next round
-                else if(expect == old_phase + 2)
-                    assert(round == 0); // Keep looking in the first round
-                else 
-                    assert(0);
+                if(current == last_node && (current_expected & 1))
+                {
+                    if(state[current].tickets[round].phase.compare_exchange_strong(expect, full, memory_order_acq_rel))
+                        break;    // I'm 1 in 1, go to next round
+                    assert(expect == full);
+                }
+                else if(state[current].tickets[round].phase.compare_exchange_strong(expect, half, memory_order_acq_rel)) 
+                {
+                    return false; // I'm 1 in 2, done with arrival
+                }
+                else if(expect == half)
+                {
+                    if(state[current].tickets[round].phase.compare_exchange_strong(expect, full, memory_order_acq_rel))
+                        break;    // I'm 2 in 2, go to next round
+                    assert(expect == full);
+                }
+                assert(round == 0 && expect == full);
             }
+            current_expected = (current_expected >> 1) + (current_expected & 1);
+            current &= ~( 1 << round );
+            last_node &= ~( 1 << round );
         }
-        return true;
     }
 
 public:
@@ -123,7 +142,7 @@ public:
     inline _LIBCPP_INLINE_VISIBILITY
     __barrier_base(ptrdiff_t expected, CompletionF completion = CompletionF()) 
             : expected(expected), expected_adjustment(0), completion(completion), 
-              phase(0), state(expected)
+              phase(0), state((expected+1) >> 1)
     { 
         assert(expected >= 0);
     }
@@ -138,13 +157,13 @@ public:
     arrival_token arrive(ptrdiff_t update = 1) 
     {
         assert(update > 0);
-        auto const old_phase = phase.load(memory_order_relaxed);
+        auto old_phase = phase.load(memory_order_relaxed);
         for(; update; --update)
             if(__arrive(old_phase)) {
-                assert(update == 1);
                 completion();
                 expected += expected_adjustment.exchange(0, memory_order_relaxed);
-                phase.store(old_phase + 2, std::memory_order_release);
+                if(!phase.compare_exchange_strong(old_phase, old_phase + 2, memory_order_release))
+                    assert(0);
             }
         return old_phase;
     }
