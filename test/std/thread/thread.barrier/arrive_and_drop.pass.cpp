@@ -16,7 +16,14 @@
 
 int main(int, char**)
 {
-  std::barrier b(1);
-  b.arrive_and_drop();
+  std::barrier b(2);
+
+  std::thread t([&](){ 
+    b.arrive_and_drop(); 
+  });
+
+  b.arrive_and_wait();
+  b.arrive_and_wait();
+  t.join();
   return 0;
 }

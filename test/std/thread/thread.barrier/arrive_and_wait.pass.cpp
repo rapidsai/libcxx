@@ -18,10 +18,14 @@
 int main(int, char**)
 {
   std::barrier b(2);
+  
   std::thread t([&](){ 
-    b.arrive_and_wait(); 
+    for(int i = 0; i < 10; ++i)
+      b.arrive_and_wait(); 
   });
-  b.arrive_and_wait();
+  for(int i = 0; i < 10; ++i)
+    b.arrive_and_wait();
   t.join();
+
   return 0;
 }

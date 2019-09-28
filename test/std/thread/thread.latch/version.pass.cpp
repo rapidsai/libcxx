@@ -8,24 +8,17 @@
 //
 // UNSUPPORTED: libcpp-has-no-threads
 
-// <barrier>
+// <latch>
 
-#include <barrier>
+#include <latch>
 
 #include "test_macros.h"
 
+#ifndef _LIBCPP_VERSION
+#error _LIBCPP_VERSION not defined
+#endif
+
 int main(int, char**)
 {
-  std::barrier b(2);
-  
-  auto tok = b.arrive();
-  std::thread t([&](){ 
-    (void)b.arrive();
-  });
-  b.wait(std::move(tok));
-  t.join();
-
-  auto tok2 = b.arrive(2);
-  b.wait(std::move(tok2));
   return 0;
 }
