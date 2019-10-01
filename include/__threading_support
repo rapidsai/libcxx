@@ -608,12 +608,14 @@ struct alignas(64) __libcpp_contention_t {
 #endif
 };
 
+_LIBCPP_FUNC_VIS
 __libcpp_contention_t * __libcpp_contention_state(void const volatile * p) _NOEXCEPT;
 
 #endif // _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
 
 #if !defined(_LIBCPP_HAS_NO_TREE_BARRIER) && !defined(_LIBCPP_HAS_NO_THREAD_FAVORITE_HASH)
 
+_LIBCPP_EXPORTED_FROM_ABI
 extern thread_local ptrdiff_t __libcpp_thread_favorite_hash;
 
 #endif

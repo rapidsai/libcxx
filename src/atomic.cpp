@@ -13,10 +13,11 @@ _LIBCPP_BEGIN_NAMESPACE_STD
 
 #ifndef _LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
 
-__libcpp_contention_t contention[ 256 /* < there's no magic in this number */ ];
+__libcpp_contention_t __libcpp_contention_state_[ 256 /* < there's no magic in this number */ ];
 
+_LIBCPP_FUNC_VIS
 __libcpp_contention_t * __libcpp_contention_state(void const volatile * p) _NOEXCEPT {
-    return contention + ((std::uintptr_t)p & 255);
+    return __libcpp_contention_state_ + ((std::uintptr_t)p & 255);
 }
 
 #endif //_LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE
