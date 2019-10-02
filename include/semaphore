@@ -49,6 +49,7 @@ using binary_semaphore = counting_semaphore<1>;
 #include <__config>
 #include <__threading_support>
 #include <atomic>
+#include <cassert>
 #endif
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
@@ -193,6 +194,7 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     void release(ptrdiff_t update = 1) 
     {
+        assert(update == 1);
         available.store(1, memory_order_release);
         available.notify_one();
     }
