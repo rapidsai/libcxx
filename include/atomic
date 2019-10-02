@@ -632,6 +632,13 @@ typedef enum memory_order {
 
 #endif // _LIBCPP_STD_VER > 17
 
+extern "C" int memcmp( const void * ptr1, const void * ptr2, size_t num );
+
+template <typename _Tp> _LIBCPP_INLINE_VISIBILITY
+bool __cxx_atomic_compare_equal(_Tp const& __lhs, _Tp const& __rhs) {
+    return memcmp(&__lhs, &__rhs, sizeof(_Tp)) == 0;
+}
+
 static_assert((is_same<underlying_type<memory_order>::type, __memory_order_underlying_t>::value),
   "unexpected underlying type for std::memory_order");
 
@@ -1564,7 +1571,7 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_try_wait_slow(__cxx_atomic_impl<_Tp,
     __libcpp_mutex_lock(&c->mutex);
     __cxx_atomic_store(__cxx_atomic_rebind<_Sco>(&c->credit), (ptrdiff_t)1, memory_order_relaxed);
     __cxx_atomic_thread_fence(memory_order_seq_cst);
-    if (val == __cxx_atomic_load(__a, order))
+    if (__cxx_atomic_compare_equal(__cxx_atomic_load(__a, order), val))
         __libcpp_condvar_wait(&c->condvar, &c->mutex);
     __libcpp_mutex_unlock(&c->mutex);
 }
@@ -1589,10 +1596,8 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_notify_all(__cxx_atomic_impl<_Tp, _S
 template <class _Tp, int _Sco>
 _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_wait(__cxx_atomic_impl<_Tp, _Sco> const volatile* __a, _Tp const val, memory_order order) {
 #ifndef _LIBCPP_NO_SPINNING
-    if(__builtin_expect(__cxx_atomic_load(__a, order) != val,1))
-        return;
     for(int i = 0; i < 16; ++i) {
-        if(__cxx_atomic_load(__a, order) != val)
+        if(!__cxx_atomic_compare_equal(__cxx_atomic_load(__a, order), val))
             return;
         if(i < 12)
             __libcpp_thread_yield_processor();
@@ -1600,9 +1605,8 @@ _LIBCPP_INLINE_VISIBILITY void __cxx_atomic_wait(__cxx_atomic_impl<_Tp, _Sco> co
             __libcpp_thread_yield();
     }
 #endif
-    while(val == __cxx_atomic_load(__a, order))
-        __cxx_atomic_try_wait_slow(__a, val, order)
-        ;
+    while(__cxx_atomic_compare_equal(__cxx_atomic_load(__a, order), val))
+        __cxx_atomic_try_wait_slow(__a, val, order);
 }
 
 // general atomic<T>
