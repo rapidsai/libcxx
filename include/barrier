@@ -47,6 +47,7 @@ namespace std
 #include <__config>
 #include <__threading_support>
 #include <atomic>
+#include <cassert>
 # ifndef _LIBCPP_HAS_NO_TREE_BARRIER
 #  include <thread>
 #  include <vector>
