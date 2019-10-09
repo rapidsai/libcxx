@@ -53,54 +53,54 @@ namespace std
 # error <latch> is not supported on this single threaded system
 #endif
 
+#if _LIBCPP_STD_VER < 11
+# error <latch> is requires C++11 or later
+#endif
+
 _LIBCPP_BEGIN_NAMESPACE_STD
 
 template<int _Sco = 0>
 class __latch_base
 {
-    alignas(64) __atomic_base<ptrdiff_t, _Sco> counter;
+    alignas(64) __atomic_base<ptrdiff_t, _Sco> __counter;
 public:
     inline _LIBCPP_INLINE_VISIBILITY
-    constexpr explicit __latch_base(ptrdiff_t expected) 
-        : counter(expected) { }
+    constexpr explicit __latch_base(ptrdiff_t __expected) 
+        : __counter(__expected) { }
 
     ~__latch_base() = default;
     __latch_base(const __latch_base&) = delete;
     __latch_base& operator=(const __latch_base&) = delete;
 
     inline _LIBCPP_INLINE_VISIBILITY
-    void count_down(ptrdiff_t update = 1) 
+    void count_down(ptrdiff_t __update = 1) 
     {
-        assert(update > 0);
-        auto const old = counter.fetch_sub(update, std::memory_order_release);
-        assert(old >= update);
-#ifndef __NO_WAIT
-        if(old == update)
-            counter.notify_all();
-#endif
+        assert(__update > 0);
+        auto const __old = __counter.fetch_sub(__update, memory_order_release);
+        assert(__old >= __update);
+        if(__old == __update)
+            __counter.notify_all();
     }
     inline _LIBCPP_INLINE_VISIBILITY
     bool try_wait() const noexcept 
     {
-        return counter.load(std::memory_order_acquire) == 0;
+        return __counter.load(memory_order_acquire) == 0;
     }
     inline _LIBCPP_INLINE_VISIBILITY
     void wait() const 
     {
         while(1) {
-            auto const current = counter.load(std::memory_order_acquire);
-            if(current == 0) 
+            auto const __current = __counter.load(memory_order_acquire);
+            if(__current == 0) 
                 return;
-#ifndef __NO_WAIT
-            counter.wait(current, std::memory_order_relaxed)
-#endif
+            __counter.wait(__current, memory_order_relaxed)
             ;
         }
     }
     inline _LIBCPP_INLINE_VISIBILITY
-    void arrive_and_wait(ptrdiff_t update = 1) 
+    void arrive_and_wait(ptrdiff_t __update = 1) 
     {
-        count_down(update);
+        count_down(__update);
         wait();
     }
 };

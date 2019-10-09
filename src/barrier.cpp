@@ -11,11 +11,10 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if !defined(_LIBCPP_HAS_NO_TREE_BARRIER) && !defined(_LIBCPP_HAS_NO_THREAD_FAVORITE_HASH)
+#if !defined(_LIBCPP_HAS_NO_TREE_BARRIER) && !defined(_LIBCPP_HAS_NO_THREAD_FAVORITE_BARRIER_INDEX) && (_LIBCPP_STD_VER >= 11)
 
 _LIBCPP_EXPORTED_FROM_ABI
-thread_local ptrdiff_t __libcpp_thread_favorite_hash = 0;
-//    hash<__thread_id>()(this_thread::get_id());
+thread_local ptrdiff_t __libcpp_thread_favorite_barrier_index = 0;
 
 #endif
 

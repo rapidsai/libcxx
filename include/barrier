@@ -62,9 +62,13 @@ namespace std
 # error <barrier> is not supported on this single threaded system
 #endif
 
+#if _LIBCPP_STD_VER < 11
+# error <barrier> is requires C++11 or later
+#endif
+
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-struct EmptyCompletionF 
+struct __empty_completion 
 {
     inline _LIBCPP_INLINE_VISIBILITY
     void operator()() noexcept { }
@@ -72,70 +76,70 @@ struct EmptyCompletionF
 
 #ifndef _LIBCPP_HAS_NO_TREE_BARRIER
 
-template<class CompletionF = EmptyCompletionF, int _Sco = 0>
+template<class _CompletionF = __empty_completion, int _Sco = 0>
 class alignas(64) __barrier_base {
 
-    ptrdiff_t                       expected;
-    __atomic_base<ptrdiff_t, _Sco>  expected_adjustment;
-    CompletionF                     completion;
+    ptrdiff_t                       __expected;
+    __atomic_base<ptrdiff_t, _Sco>  __expected_adjustment;
+    _CompletionF                    __completion;
 
     using __phase_t = uint8_t;
-    __atomic_base<__phase_t, _Sco>  phase;
+    __atomic_base<__phase_t, _Sco>  __phase;
 
     struct alignas(64) __state_t 
     {
         struct {
-            __atomic_base<__phase_t, _Sco> phase = ATOMIC_VAR_INIT(0);
-        } tickets[64];
+            __atomic_base<__phase_t, _Sco> __phase = ATOMIC_VAR_INIT(0);
+        } __tickets[64];
     };
-    ::std::vector<__state_t>   state;
+    ::std::vector<__state_t>   __state;
 
     inline _LIBCPP_INLINE_VISIBILITY
-    bool __arrive(__phase_t const old_phase)
+    bool __arrive(__phase_t const __old_phase)
     {
-        __phase_t const half = old_phase + 1, full = old_phase + 2;
-#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-        ptrdiff_t current = __libcpp_thread_favorite_hash, 
+        __phase_t const __half_step = __old_phase + 1, __full_step = __old_phase + 2;
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_BARRIER_INDEX
+        ptrdiff_t __current = __libcpp_thread_favorite_barrier_index, 
 #else
-        ptrdiff_t current = 0, 
+        ptrdiff_t __current = 0, 
 #endif
-                  current_expected = expected, 
-                  last_node = (current_expected >> 1);
-        for(size_t round = 0;; ++round) {
-            assert(round <= 63);
-            if(current_expected == 1)
+                  __current_expected = __expected, 
+                  __last_node = (__current_expected >> 1);
+        for(size_t __round = 0;; ++__round) {
+            assert(__round <= 63);
+            if(__current_expected == 1)
                 return true;
-            for(;;++current) {
-#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_HASH
-                if(0 == round) {
-                    if(current >= current_expected)
-                        current = 0;
-                    __libcpp_thread_favorite_hash = current;
+            for(;;++__current) {
+#ifndef _LIBCPP_HAS_NO_THREAD_FAVORITE_BARRIER_INDEX
+                if(0 == __round) {
+                    if(__current >= __current_expected)
+                        __current = 0;
+                    __libcpp_thread_favorite_barrier_index = __current;
                 }
 #endif
-                assert(current <= last_node);
-                __phase_t expect = old_phase;
-                if(current == last_node && (current_expected & 1))
+                assert(__current <= __last_node);
+                __phase_t expect = __old_phase;
+                if(__current == __last_node && (__current_expected & 1))
                 {
-                    if(state[current].tickets[round].phase.compare_exchange_strong(expect, full, memory_order_acq_rel))
-                        break;    // I'm 1 in 1, go to next round
-                    assert(expect == full);
+                    if(__state[__current].__tickets[__round].__phase.compare_exchange_strong(expect, __full_step, memory_order_acq_rel))
+                        break;    // I'm 1 in 1, go to next __round
+                    assert(expect == __full_step);
                 }
-                else if(state[current].tickets[round].phase.compare_exchange_strong(expect, half, memory_order_acq_rel)) 
+                else if(__state[__current].__tickets[__round].__phase.compare_exchange_strong(expect, __half_step, memory_order_acq_rel)) 
                 {
                     return false; // I'm 1 in 2, done with arrival
                 }
-                else if(expect == half)
+                else if(expect == __half_step)
                 {
-                    if(state[current].tickets[round].phase.compare_exchange_strong(expect, full, memory_order_acq_rel))
-                        break;    // I'm 2 in 2, go to next round
-                    assert(expect == full);
+                    if(__state[__current].__tickets[__round].__phase.compare_exchange_strong(expect, __full_step, memory_order_acq_rel))
+                        break;    // I'm 2 in 2, go to next __round
+                    assert(expect == __full_step);
                 }
-                assert(round == 0 && expect == full);
+                assert(__round == 0 && expect == __full_step);
             }
-            current_expected = (current_expected >> 1) + (current_expected & 1);
-            current &= ~( 1 << round );
-            last_node &= ~( 1 << round );
+            __current_expected = (__current_expected >> 1) + (__current_expected & 1);
+            __current &= ~( 1 << __round );
+            __last_node &= ~( 1 << __round );
         }
     }
 
@@ -143,11 +147,11 @@ public:
     using arrival_token = __phase_t;
     
     inline _LIBCPP_INLINE_VISIBILITY
-    __barrier_base(ptrdiff_t expected, CompletionF completion = CompletionF()) 
-            : expected(expected), expected_adjustment(0), completion(completion), 
-              phase(0), state((expected+1) >> 1)
+    __barrier_base(ptrdiff_t __expected, _CompletionF __completion = _CompletionF()) 
+            : __expected(__expected), __expected_adjustment(0), __completion(__completion), 
+              __phase(0), __state((__expected+1) >> 1)
     { 
-        assert(expected >= 0);
+        assert(__expected >= 0);
     }
 
     inline _LIBCPP_INLINE_VISIBILITY
@@ -160,21 +164,21 @@ public:
     arrival_token arrive(ptrdiff_t update = 1) 
     {
         assert(update > 0);
-        auto old_phase = phase.load(memory_order_relaxed);
+        auto __old_phase = __phase.load(memory_order_relaxed);
         for(; update; --update)
-            if(__arrive(old_phase)) {
-                completion();
-                expected += expected_adjustment.load(memory_order_relaxed);
-                expected_adjustment.store(0, memory_order_relaxed);
-                phase.store(old_phase + 2, memory_order_release);
+            if(__arrive(__old_phase)) {
+                __completion();
+                __expected += __expected_adjustment.load(memory_order_relaxed);
+                __expected_adjustment.store(0, memory_order_relaxed);
+                __phase.store(__old_phase + 2, memory_order_release);
             }
-        return old_phase;
+        return __old_phase;
     }
     inline _LIBCPP_INLINE_VISIBILITY
-    void wait(arrival_token&& old_phase) const 
+    void wait(arrival_token&& __old_phase) const 
     {
         __libcpp_thread_poll_with_backoff([&]() -> bool {
-            return phase.load(memory_order_acquire) != old_phase;
+            return __phase.load(memory_order_acquire) != __old_phase;
         });
     }
 	inline _LIBCPP_INLINE_VISIBILITY
@@ -185,25 +189,25 @@ public:
     inline _LIBCPP_INLINE_VISIBILITY
     void arrive_and_drop() 
     {
-        expected_adjustment.fetch_sub(1, memory_order_relaxed);
+        __expected_adjustment.fetch_sub(1, memory_order_relaxed);
         (void)arrive();
     }
 };
 
 #else
 
-template<class CompletionF, int _Sco = 0>
+template<class _CompletionF, int _Sco = 0>
 class __barrier_base {
 
-    alignas(64) __atomic_base<ptrdiff_t, _Sco> expected, arrived;
-    alignas(64) CompletionF                    completion;
-    alignas(64) __atomic_base<bool, _Sco>      phase;
+    alignas(64) __atomic_base<ptrdiff_t, _Sco> __expected, arrived;
+    alignas(64) _CompletionF                   __completion;
+    alignas(64) __atomic_base<bool, _Sco>      __phase;
 public:
     using arrival_token = bool;
 
     _LIBCPP_INLINE_VISIBILITY
-    __barrier_base(ptrdiff_t expected, CompletionF completion = CompletionF()) 
-        : phase(false), expected(expected), arrived(expected), completion(completion) 
+    __barrier_base(ptrdiff_t __expected, _CompletionF __completion = _CompletionF()) 
+        : __phase(false), __expected(__expected), arrived(__expected), __completion(__completion) 
     {
     }
 
@@ -215,22 +219,22 @@ public:
     [[nodiscard]] _LIBCPP_INLINE_VISIBILITY
     arrival_token arrive(ptrdiff_t update = 1) 
     {
-        auto const old_phase = phase.load(memory_order_relaxed);
-        auto const result = arrived.fetch_sub(update, memory_order_acq_rel) - update;
-        assert(result >= 0);
-        auto const new_expected = expected.load(memory_order_relaxed);
-        if(0 == result) {
-            completion();
+        auto const __old_phase = __phase.load(memory_order_relaxed);
+        auto const __result = arrived.fetch_sub(update, memory_order_acq_rel) - update;
+        assert(__result >= 0);
+        auto const new_expected = __expected.load(memory_order_relaxed);
+        if(0 == __result) {
+            __completion();
             arrived.store(new_expected, memory_order_relaxed);
-            phase.store(!old_phase, memory_order_release);
-            atomic_notify_all(&phase);
+            __phase.store(!__old_phase, memory_order_release);
+            atomic_notify_all(&__phase);
         }
-        return old_phase;
+        return __old_phase;
     }
     _LIBCPP_INLINE_VISIBILITY
-    void wait(arrival_token&& old_phase) const 
+    void wait(arrival_token&& __old_phase) const 
     {
-        phase.wait(old_phase, memory_order_acquire);
+        __phase.wait(__old_phase, memory_order_acquire);
     }
 	_LIBCPP_INLINE_VISIBILITY 
     void arrive_and_wait() 
@@ -240,35 +244,35 @@ public:
     _LIBCPP_INLINE_VISIBILITY
     void arrive_and_drop() 
     {
-        expected.fetch_sub(1, memory_order_relaxed);
+        __expected.fetch_sub(1, memory_order_relaxed);
         (void)arrive();
     }
 };
 
 template<int _Sco>
-class __barrier_base<EmptyCompletionF, _Sco> {
+class __barrier_base<__empty_completion, _Sco> {
 
-    static constexpr uint64_t expected_unit = 1ull;
-    static constexpr uint64_t arrived_unit = 1ull << 32;
-    static constexpr uint64_t expected_mask = arrived_unit - 1;
-    static constexpr uint64_t phase_bit = 1ull << 63;
-    static constexpr uint64_t arrived_mask = (phase_bit - 1) & ~expected_mask;
+    static constexpr uint64_t __expected_unit = 1ull;
+    static constexpr uint64_t __arrived_unit = 1ull << 32;
+    static constexpr uint64_t __expected_mask = __arrived_unit - 1;
+    static constexpr uint64_t __phase_bit = 1ull << 63;
+    static constexpr uint64_t __arrived_mask = (__phase_bit - 1) & ~__expected_mask;
 
-    alignas(64) __atomic_base<uint64_t, _Sco> phase_arrived_expected;
+    alignas(64) __atomic_base<uint64_t, _Sco> __phase_arrived_expected;
 
     static inline _LIBCPP_INLINE_VISIBILITY
-    constexpr uint64_t __init(ptrdiff_t count) _NOEXCEPT 
+    constexpr uint64_t __init(ptrdiff_t __count) _NOEXCEPT 
     {
-        return (((1u << 31) - count) << 32) 
-              | ((1u << 31) - count);
+        return (((1u << 31) - __count) << 32) 
+              | ((1u << 31) - __count);
     }
 
 public:
     using arrival_token = uint64_t;
 
     _LIBCPP_INLINE_VISIBILITY
-    __barrier_base(ptrdiff_t count, EmptyCompletionF = EmptyCompletionF()) 
-        : phase_arrived_expected(__init(count)) { 
+    __barrier_base(ptrdiff_t __count, __empty_completion = __empty_completion()) 
+        : __phase_arrived_expected(__init(__count)) { 
     }
 
     ~__barrier_base() = default;
@@ -279,16 +283,16 @@ public:
     [[nodiscard]] inline _LIBCPP_INLINE_VISIBILITY
     arrival_token arrive(ptrdiff_t update = 1) 
     {
-        auto const inc = arrived_unit * update;
-        auto const old = phase_arrived_expected.fetch_add(inc, memory_order_acq_rel);
-        if((old ^ (old + inc)) & phase_bit) {
-            phase_arrived_expected.fetch_add((old & expected_mask) << 32, memory_order_relaxed);
-            phase_arrived_expected.notify_all();
+        auto const __inc = __arrived_unit * update;
+        auto const __old = __phase_arrived_expected.fetch_add(__inc, memory_order_acq_rel);
+        if((__old ^ (__old + __inc)) & __phase_bit) {
+            __phase_arrived_expected.fetch_add((__old & __expected_mask) << 32, memory_order_relaxed);
+            __phase_arrived_expected.notify_all();
         }
-        return old & phase_bit;
+        return __old & __phase_bit;
     }
     inline _LIBCPP_INLINE_VISIBILITY 
-    void wait(arrival_token&& phase) const
+    void wait(arrival_token&& __phase) const
     {
 #if defined(__CUDACC__)
         __libcpp_thread_poll_with_backoff([&] _LIBCPP_INLINE_VISIBILITY () -> bool
@@ -296,8 +300,8 @@ public:
         __libcpp_thread_poll_with_backoff([&]() -> bool
 #endif
         {
-            uint64_t const current = phase_arrived_expected.load(memory_order_acquire);
-            return ((current & phase_bit) != phase);
+            uint64_t const __current = __phase_arrived_expected.load(memory_order_acquire);
+            return ((__current & __phase_bit) != __phase);
         });
     }
 	inline _LIBCPP_INLINE_VISIBILITY
@@ -308,19 +312,19 @@ public:
     inline _LIBCPP_INLINE_VISIBILITY
     void arrive_and_drop() 
     {
-        phase_arrived_expected.fetch_add(expected_unit, memory_order_relaxed);
+        __phase_arrived_expected.fetch_add(__expected_unit, memory_order_relaxed);
         (void)arrive();
     }
 };
 
 #endif //_LIBCPP_HAS_NO_TREE_BARRIER
 
-template<class CompletionF = EmptyCompletionF>
-class barrier : public __barrier_base<CompletionF> {
+template<class _CompletionF = __empty_completion>
+class barrier : public __barrier_base<_CompletionF> {
 public:
     _LIBCPP_INLINE_VISIBILITY
-    barrier(ptrdiff_t count, CompletionF completion = CompletionF()) 
-        : __barrier_base<CompletionF>(count, completion) { 
+    barrier(ptrdiff_t __count, _CompletionF __completion = _CompletionF()) 
+        : __barrier_base<_CompletionF>(__count, __completion) { 
     }
 };
 
