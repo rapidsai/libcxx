@@ -7,7 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #ifndef _LIBCPP_HAS_NO_THREADS
+#ifdef _LIBCPP_SIMT
+#include <simt/barrier>
+#else
 #include "barrier"
+#endif
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 

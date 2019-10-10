@@ -7,7 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #ifndef _LIBCPP_HAS_NO_THREADS
+#ifdef _LIBCPP_SIMT
+#include <simt/atomic>
+#else
 #include "atomic"
+#endif
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
