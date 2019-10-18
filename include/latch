@@ -42,7 +42,6 @@ namespace std
 #include <__config>
 #include <__threading_support>
 #include <atomic>
-#include <cassert>
 #endif
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
@@ -62,9 +61,12 @@ _LIBCPP_BEGIN_NAMESPACE_STD
 template<int _Sco = 0>
 class __latch_base
 {
-    alignas(64) __atomic_base<ptrdiff_t, _Sco> __counter;
+    __atomic_base<ptrdiff_t, _Sco> __counter;
+#ifndef __CUDACC__
+    mutable __libcpp_contention_t  __contention;
+#endif
 public:
-    inline _LIBCPP_INLINE_VISIBILITY
+    _LIBCPP_INLINE_VISIBILITY
     constexpr explicit __latch_base(ptrdiff_t __expected) 
         : __counter(__expected) { }
 
@@ -75,11 +77,13 @@ public:
     inline _LIBCPP_INLINE_VISIBILITY
     void count_down(ptrdiff_t __update = 1) 
     {
-        assert(__update > 0);
         auto const __old = __counter.fetch_sub(__update, memory_order_release);
-        assert(__old >= __update);
         if(__old == __update)
-            __counter.notify_all();
+#ifdef __CUDACC__
+            __cxx_atomic_notify_all(&__counter.__a_, nullptr);
+#else
+            __cxx_atomic_notify_all(&__counter.__a_, &__contention);
+#endif
     }
     inline _LIBCPP_INLINE_VISIBILITY
     bool try_wait() const noexcept 
@@ -93,8 +97,11 @@ public:
             auto const __current = __counter.load(memory_order_acquire);
             if(__current == 0) 
                 return;
-            __counter.wait(__current, memory_order_relaxed)
-            ;
+#ifdef __CUDACC__
+            __cxx_atomic_wait(&__counter.__a_, __current, memory_order_relaxed, nullptr);
+#else
+            __cxx_atomic_wait(&__counter.__a_, __current, memory_order_relaxed, &__contention);
+#endif
         }
     }
     inline _LIBCPP_INLINE_VISIBILITY
@@ -105,7 +112,13 @@ public:
     }
 };
 
-using latch = __latch_base<>;
+class latch : public __latch_base<> {
+public:
+    _LIBCPP_INLINE_VISIBILITY
+    constexpr explicit latch(ptrdiff_t __expected) 
+        : __latch_base<>(__expected) { }
+
+};
 
 _LIBCPP_END_NAMESPACE_STD
 

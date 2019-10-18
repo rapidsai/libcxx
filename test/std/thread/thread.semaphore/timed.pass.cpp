@@ -20,7 +20,7 @@ int main(int, char**)
 {
   auto const start = std::chrono::steady_clock::now();
 
-  std::counting_semaphore s(0);
+  std::counting_semaphore<> s(0);
   
   assert(!s.try_acquire_until(start + std::chrono::milliseconds(250)));
   assert(!s.try_acquire_for(std::chrono::milliseconds(250)));

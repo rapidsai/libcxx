@@ -8,29 +8,30 @@
 //
 // UNSUPPORTED: libcpp-has-no-threads
 
-// <barrier>
+// <semaphore>
 
-#include <barrier>
-#include <cassert>
+#include <semaphore>
+#include <chrono>
 #include <thread>
 
 #include "test_macros.h"
 
 int main(int, char**)
 {
-  int x = 0;
-  auto comp = [&]() { x += 1; };
-  std::barrier<decltype(comp)> b(2, comp);
+  std::binary_semaphore s(1);
+  
+  auto l = [&](){ 
+    for(int i = 0; i < 1024; ++i) {
+        s.acquire();
+        std::this_thread::sleep_for(std::chrono::microseconds(1));
+        s.release();
+    }
+  };
 
-  std::thread t([&](){ 
-      for(int i = 0; i < 10; ++i)
-        b.arrive_and_wait(); 
-  });
+  std::thread t(l);
+  l();
 
-  for(int i = 0; i < 10; ++i)
-    b.arrive_and_wait();
-
-  assert(x == 10);
   t.join();
+
   return 0;
 }

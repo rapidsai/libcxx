@@ -17,7 +17,7 @@
 
 int main(int, char**)
 {
-  std::counting_semaphore s(2);
+  std::counting_semaphore<> s(2);
   
   std::thread t([&](){ 
     s.acquire();

@@ -11,12 +11,13 @@
 // <barrier>
 
 #include <barrier>
+#include <thread>
 
 #include "test_macros.h"
 
 int main(int, char**)
 {
-  std::barrier b(2);
+  std::barrier<> b(2);
   
   auto tok = b.arrive();
   std::thread t([&](){ 

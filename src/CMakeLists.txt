@@ -30,6 +30,7 @@ set(LIBCXX_SOURCES
   optional.cpp
   random.cpp
   regex.cpp
+  semaphore.cpp
   shared_mutex.cpp
   stdexcept.cpp
   string.cpp

@@ -17,7 +17,7 @@
 
 int main(int, char**)
 {
-  std::counting_semaphore s(1);
+  std::counting_semaphore<> s(1);
   
   assert(s.try_acquire());
   s.release();

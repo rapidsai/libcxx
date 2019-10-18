@@ -6,6 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifdef _LIBCPP_SIMT
+#include <details/__config>
+#else
+#include "__config"
+#endif
+
 #ifndef _LIBCPP_HAS_NO_THREADS
 #ifdef _LIBCPP_SIMT
 #include <simt/barrier>

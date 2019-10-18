@@ -17,7 +17,7 @@
 
 int main(int, char**)
 {
-  std::barrier b(2);
+  std::barrier<> b(2);
   
   std::thread t([&](){ 
     for(int i = 0; i < 10; ++i)

@@ -17,7 +17,7 @@
 
 int main(int, char**)
 {
-  std::counting_semaphore s(0);
+  std::counting_semaphore<> s(0);
   
   s.release();
   s.acquire();

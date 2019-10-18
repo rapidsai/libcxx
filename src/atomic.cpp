@@ -6,6 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifdef _LIBCPP_SIMT
+#include <details/__config>
+#else
+#include "__config"
+#endif
+
 #ifndef _LIBCPP_HAS_NO_THREADS
 #ifdef _LIBCPP_SIMT
 #include <simt/atomic>
@@ -15,7 +21,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if !defined(_LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE) && (_LIBCPP_STD_VER >= 11)
+#if !defined(_LIBCPP_HAS_NO_THREAD_CONTENTION_TABLE)
 
 __libcpp_contention_t __libcpp_contention_state_[ 256 /* < there's no magic in this number */ ];
 
