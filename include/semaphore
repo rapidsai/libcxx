@@ -70,7 +70,7 @@ template<int _Sco>
 class __atomic_semaphore_base 
 {
     __atomic_base<ptrdiff_t, _Sco> __count;
-#ifndef __CUDACC__
+#ifndef _LIBCPP_HAS_NO_THREAD_CONTENTION_STATE
     __libcpp_contention_t          __contention;
 #endif
 public:
@@ -85,11 +85,11 @@ public:
     {
         if(0 < __count.fetch_add(__update, memory_order_release))
             ;
-#ifdef __CUDACC__
+#ifdef _LIBCPP_HAS_NO_THREAD_CONTENTION_STATE
         else if(__update > 1)
-            __cxx_atomic_notify_all(&__count.__a_, nullptr);
+            __cxx_atomic_notify_all(&__count.__a_);
         else
-            __cxx_atomic_notify_one(&__count.__a_, nullptr);
+            __cxx_atomic_notify_one(&__count.__a_);
 #else
         else if(__update > 1)
             __cxx_atomic_notify_all(&__count.__a_, &__contention);
@@ -103,8 +103,8 @@ public:
         ptrdiff_t __old = __count.load(memory_order_relaxed);
         while (1) {
             if(__old == 0) {
-#ifdef __CUDACC__
-                __cxx_atomic_wait(&__count.__a_, __old, memory_order_relaxed, nullptr);
+#ifdef _LIBCPP_HAS_NO_THREAD_CONTENTION_STATE
+                __cxx_atomic_wait(&__count.__a_, __old, memory_order_relaxed);
 #else
                 __cxx_atomic_wait(&__count.__a_, __old, memory_order_relaxed, &__contention);
 #endif
@@ -212,6 +212,7 @@ public:
 #endif //_LIBCPP_HAS_NO_SEMAPHORES
 
 #if defined(_LIBCPP_HAS_NO_SEMAPHORES)
+    template<int _Sco, ptrdiff_t>
     using __semaphore_base = __atomic_semaphore_base<_Sco>;
 #else
 # if !defined(_LIBCPP_HAS_NO_SEMAPHORE_FRONT_BUFFER)

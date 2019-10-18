@@ -62,7 +62,7 @@ template<int _Sco = 0>
 class __latch_base
 {
     __atomic_base<ptrdiff_t, _Sco> __counter;
-#ifndef __CUDACC__
+#ifndef _LIBCPP_HAS_NO_THREAD_CONTENTION_STATE
     mutable __libcpp_contention_t  __contention;
 #endif
 public:
@@ -79,8 +79,8 @@ public:
     {
         auto const __old = __counter.fetch_sub(__update, memory_order_release);
         if(__old == __update)
-#ifdef __CUDACC__
-            __cxx_atomic_notify_all(&__counter.__a_, nullptr);
+#ifdef _LIBCPP_HAS_NO_THREAD_CONTENTION_STATE
+            __cxx_atomic_notify_all(&__counter.__a_);
 #else
             __cxx_atomic_notify_all(&__counter.__a_, &__contention);
 #endif
@@ -97,8 +97,8 @@ public:
             auto const __current = __counter.load(memory_order_acquire);
             if(__current == 0) 
                 return;
-#ifdef __CUDACC__
-            __cxx_atomic_wait(&__counter.__a_, __current, memory_order_relaxed, nullptr);
+#ifdef _LIBCPP_HAS_NO_THREAD_CONTENTION_STATE
+            __cxx_atomic_wait(&__counter.__a_, __current, memory_order_relaxed);
 #else
             __cxx_atomic_wait(&__counter.__a_, __current, memory_order_relaxed, &__contention);
 #endif
