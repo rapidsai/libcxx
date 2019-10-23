@@ -1981,27 +1981,27 @@ inline constexpr
 weekday_last    weekday::operator[](last_spec) const noexcept { return weekday_last{*this}; }
 
 
-inline constexpr last_spec last{};
-inline constexpr weekday   Sunday{0};
-inline constexpr weekday   Monday{1};
-inline constexpr weekday   Tuesday{2};
-inline constexpr weekday   Wednesday{3};
-inline constexpr weekday   Thursday{4};
-inline constexpr weekday   Friday{5};
-inline constexpr weekday   Saturday{6};
+_LIBCPP_INLINE_CONSTEXPR last_spec last{};
+_LIBCPP_INLINE_CONSTEXPR weekday   Sunday{0};
+_LIBCPP_INLINE_CONSTEXPR weekday   Monday{1};
+_LIBCPP_INLINE_CONSTEXPR weekday   Tuesday{2};
+_LIBCPP_INLINE_CONSTEXPR weekday   Wednesday{3};
+_LIBCPP_INLINE_CONSTEXPR weekday   Thursday{4};
+_LIBCPP_INLINE_CONSTEXPR weekday   Friday{5};
+_LIBCPP_INLINE_CONSTEXPR weekday   Saturday{6};
 
-inline constexpr month January{1};
-inline constexpr month February{2};
-inline constexpr month March{3};
-inline constexpr month April{4};
-inline constexpr month May{5};
-inline constexpr month June{6};
-inline constexpr month July{7};
-inline constexpr month August{8};
-inline constexpr month September{9};
-inline constexpr month October{10};
-inline constexpr month November{11};
-inline constexpr month December{12};
+_LIBCPP_INLINE_CONSTEXPR month January{1};
+_LIBCPP_INLINE_CONSTEXPR month February{2};
+_LIBCPP_INLINE_CONSTEXPR month March{3};
+_LIBCPP_INLINE_CONSTEXPR month April{4};
+_LIBCPP_INLINE_CONSTEXPR month May{5};
+_LIBCPP_INLINE_CONSTEXPR month June{6};
+_LIBCPP_INLINE_CONSTEXPR month July{7};
+_LIBCPP_INLINE_CONSTEXPR month August{8};
+_LIBCPP_INLINE_CONSTEXPR month September{9};
+_LIBCPP_INLINE_CONSTEXPR month October{10};
+_LIBCPP_INLINE_CONSTEXPR month November{11};
+_LIBCPP_INLINE_CONSTEXPR month December{12};
 
 
 class month_day {
