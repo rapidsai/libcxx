@@ -1572,7 +1572,49 @@ operator-(const time_point<_Clock, _Duration1>& __lhs, const time_point<_Clock, 
 /////////////////////// clocks ///////////////////////////
 //////////////////////////////////////////////////////////
 
-#ifndef _LIBCPP_HAS_CLOCK_API_EXTERNAL
+#ifdef _LIBCUDACXX_USE_CUDA_CLOCK
+
+class _LIBCPP_TYPE_VIS system_clock
+{
+public:
+    typedef nanoseconds                      duration;
+    typedef duration::rep                    rep;
+    typedef duration::period                 period;
+    typedef chrono::time_point<system_clock> time_point;
+    static _LIBCPP_CONSTEXPR_AFTER_CXX11 const bool is_steady = false;
+
+    inline _LIBCPP_INLINE_VISIBILITY
+    static time_point now() _NOEXCEPT
+    {
+#ifdef __CUDA_ARCH__
+        uint64_t time;
+        asm("mov.u64  %0, %globaltimer;":"=l"(time)::);
+        return time_point(nanoseconds(time));
+#else
+        return time_point(nanoseconds(
+                ::std::chrono::duration_cast<::std::chrono::nanoseconds>(
+                    ::std::chrono::system_clock::now().time_since_epoch()
+                ).count()
+               ));
+#endif
+    }
+    inline _LIBCPP_INLINE_VISIBILITY
+    static time_t to_time_t(const time_point& __t) _NOEXCEPT
+    {
+        return time_t(duration_cast<seconds>(__t.time_since_epoch()).count());
+    }
+    inline _LIBCPP_INLINE_VISIBILITY
+    static time_point from_time_t(time_t __t) _NOEXCEPT
+    {
+        return time_point(seconds(__t));;
+    }
+};
+
+using steady_clock = system_clock;
+using high_resolution_clock = steady_clock;
+
+#else
+#  ifndef _LIBCPP_HAS_CLOCK_API_EXTERNAL
 
 class _LIBCPP_TYPE_VIS system_clock
 {
@@ -1588,7 +1630,7 @@ public:
     static time_point from_time_t(time_t __t) _NOEXCEPT;
 };
 
-#ifndef _LIBCPP_HAS_NO_MONOTONIC_CLOCK
+#    ifndef _LIBCPP_HAS_NO_MONOTONIC_CLOCK
 class _LIBCPP_TYPE_VIS steady_clock
 {
 public:
@@ -1602,15 +1644,16 @@ public:
 };
 
 typedef steady_clock high_resolution_clock;
-#else
+#    else
 typedef system_clock high_resolution_clock;
-#endif
+#    endif // _LIBCPP_HAS_NO_MONOTONIC_CLOCK
 
-#endif // _LIBCPP_HAS_CLOCK_API_EXTERNAL
+#  endif // _LIBCPP_HAS_CLOCK_API_EXTERNAL
+#endif // _LIBCUDACXX_USE_CUDA_CLOCK
 
 #if _LIBCPP_STD_VER > 17
 
-#ifndef _LIBCPP_HAS_CLOCK_API_EXTERNAL
+#if !defined(_LIBCPP_HAS_CLOCK_API_EXTERNAL) || defined(_LIBCUDACXX_USE_CUDA_CLOCK)
 
 // [time.clock.file], type file_clock
 using file_clock = _VSTD_FS::_FilesystemClock;
@@ -1981,27 +2024,27 @@ inline constexpr
 weekday_last    weekday::operator[](last_spec) const noexcept { return weekday_last{*this}; }
 
 
-inline constexpr last_spec last{};
-inline constexpr weekday   Sunday{0};
-inline constexpr weekday   Monday{1};
-inline constexpr weekday   Tuesday{2};
-inline constexpr weekday   Wednesday{3};
-inline constexpr weekday   Thursday{4};
-inline constexpr weekday   Friday{5};
-inline constexpr weekday   Saturday{6};
+_LIBCPP_INLINE_CONSTEXPR last_spec last{};
+_LIBCPP_INLINE_CONSTEXPR weekday   Sunday{0};
+_LIBCPP_INLINE_CONSTEXPR weekday   Monday{1};
+_LIBCPP_INLINE_CONSTEXPR weekday   Tuesday{2};
+_LIBCPP_INLINE_CONSTEXPR weekday   Wednesday{3};
+_LIBCPP_INLINE_CONSTEXPR weekday   Thursday{4};
+_LIBCPP_INLINE_CONSTEXPR weekday   Friday{5};
+_LIBCPP_INLINE_CONSTEXPR weekday   Saturday{6};
 
-inline constexpr month January{1};
-inline constexpr month February{2};
-inline constexpr month March{3};
-inline constexpr month April{4};
-inline constexpr month May{5};
-inline constexpr month June{6};
-inline constexpr month July{7};
-inline constexpr month August{8};
-inline constexpr month September{9};
-inline constexpr month October{10};
-inline constexpr month November{11};
-inline constexpr month December{12};
+_LIBCPP_INLINE_CONSTEXPR month January{1};
+_LIBCPP_INLINE_CONSTEXPR month February{2};
+_LIBCPP_INLINE_CONSTEXPR month March{3};
+_LIBCPP_INLINE_CONSTEXPR month April{4};
+_LIBCPP_INLINE_CONSTEXPR month May{5};
+_LIBCPP_INLINE_CONSTEXPR month June{6};
+_LIBCPP_INLINE_CONSTEXPR month July{7};
+_LIBCPP_INLINE_CONSTEXPR month August{8};
+_LIBCPP_INLINE_CONSTEXPR month September{9};
+_LIBCPP_INLINE_CONSTEXPR month October{10};
+_LIBCPP_INLINE_CONSTEXPR month November{11};
+_LIBCPP_INLINE_CONSTEXPR month December{12};
 
 
 class month_day {
@@ -2758,6 +2801,7 @@ inline constexpr year_month_weekday_last& year_month_weekday_last::operator-=(co
 inline constexpr year_month_weekday_last& year_month_weekday_last::operator+=(const years& __dy)  noexcept { *this = *this + __dy; return *this; }
 inline constexpr year_month_weekday_last& year_month_weekday_last::operator-=(const years& __dy)  noexcept { *this = *this - __dy; return *this; }
 
+#ifndef _LIBCUDACXX_USE_CXX20_CHRONO
 
 template <class _Duration>
 class hh_mm_ss
@@ -2817,6 +2861,8 @@ private:
     chrono::seconds __s;
     precision       __f;
 };
+
+#endif // _LIBCUDACXX_USE_CXX20_CHRONO
 
 constexpr bool is_am(const hours& __h) noexcept { return __h >= hours( 0) && __h < hours(12); }
 constexpr bool is_pm(const hours& __h) noexcept { return __h >= hours(12) && __h < hours(24); }
