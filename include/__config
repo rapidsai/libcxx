@@ -212,7 +212,7 @@
 
 // Need to detect which libc we're using if we're on Linux.
 #if defined(__linux__)
-#  include <features.h>
+//#  include <features.h>
 #  if defined(__GLIBC_PREREQ)
 #    define _LIBCPP_GLIBC_PREREQ(a, b) __GLIBC_PREREQ(a, b)
 #  else
@@ -321,7 +321,7 @@
 #endif
 
 #if !defined(_LIBCPP_LITTLE_ENDIAN) && !defined(_LIBCPP_BIG_ENDIAN)
-#  include <endian.h>
+//#  include <endian.h>
 #  if __BYTE_ORDER == __LITTLE_ENDIAN
 #    define _LIBCPP_LITTLE_ENDIAN
 #  elif __BYTE_ORDER == __BIG_ENDIAN
@@ -1258,7 +1258,8 @@ _LIBCPP_FUNC_VIS extern "C" void __sanitizer_annotate_contiguous_container(
 // Use a function like macro to imply that it must be followed by a semicolon
 #if __cplusplus > 201402L && __has_cpp_attribute(fallthrough)
 #  define _LIBCPP_FALLTHROUGH() [[fallthrough]]
-#elif __has_cpp_attribute(clang::fallthrough)
+//#elif __has_cpp_attribute(clang::fallthrough)
+#elif __has_cpp_attribute(clang__fallthrough)
 #  define _LIBCPP_FALLTHROUGH() [[clang::fallthrough]]
 #elif __has_attribute(fallthough) || _GNUC_VER >= 700
 #  define _LIBCPP_FALLTHROUGH() __attribute__((__fallthrough__))
