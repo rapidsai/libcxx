@@ -1675,7 +1675,7 @@ using local_days    = local_time<days>;
 
 #endif // _LIBCPP_HAS_CLOCK_API_EXTERNAL
 
-struct last_spec { explicit last_spec() = default; };
+struct last_spec { last_spec() = default; };
 
 class day {
 private:

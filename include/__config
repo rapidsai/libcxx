@@ -810,11 +810,15 @@ typedef unsigned int   char32_t;
 #  define _LIBCPP_CONSTEXPR constexpr
 #endif
 
+#ifdef __CUDA_ARCH__
+#  define _LIBCPP_INLINE_CONSTEXPR __device__ const
+#else
 #if _LIBCPP_STD_VER > 17
 #  define _LIBCPP_INLINE_CONSTEXPR inline constexpr
 #else
 #  define _LIBCPP_INLINE_CONSTEXPR static constexpr
 #endif
+#endif  // __CUDA_ARCH__
 
 #ifdef _LIBCPP_CXX03_LANG
 #  define _LIBCPP_DEFAULT {}
